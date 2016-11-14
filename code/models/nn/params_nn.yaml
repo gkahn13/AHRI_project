@@ -1,9 +1,19 @@
+exp: exp0
 random_seed: 1
 
 K: 2 # number previous timesteps to take in (i.e. 1 means only current)
 H: 2 # number future timesteps to predict
 feature_type: 'position'
+features_per_file: 32
 
-process_data:
+graph_type: 'fc'
+reg: 0.001
 
-  batch_size: 32
+device: 1
+gpu_fraction: 0.4
+
+val_pct: 0.2
+batch_size: 2
+learning_rate: 0.001
+epochs: 50
+display_batch: 4

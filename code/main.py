@@ -7,6 +7,7 @@ import os
 import numpy as np, random
 
 from models.nn.process_data_nn import ProcessDataNN
+from models.nn.prediction_model_nn import PredictionModelNN
 
 from config import load_params, params
 
@@ -29,6 +30,7 @@ if __name__ == '__main__':
     run = args.run
     model = args.model
     data_folder = '/home/gkahn/code/AHRI_project/data/seq_hotel'
+    exp_folder = '/home/gkahn/code/AHRI_project/exps/'
 
     # load yaml so all files can access
     yaml_path = os.path.join(os.path.dirname(__file__), 'models/{0}/params_{0}.yaml'.format(model))
@@ -45,7 +47,11 @@ if __name__ == '__main__':
         process_data.process()
 
     elif run == 'train':
-        pass # TODO
+        exp_folder = os.path.join(exp_folder, model, params['exp'])
+        if model == 'nn':
+            prediction_model = PredictionModelNN(exp_folder, data_folder)
+
+        prediction_model.train()
     else:
         raise Exception('Run {0} is not valid'.format(run))
 

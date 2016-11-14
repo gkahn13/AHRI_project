@@ -1,8 +1,11 @@
 import abc
 import os
+import pickle
 
 import numpy as np
 import imageio
+
+from config import params
 
 class Pedestrian(object):
     def __init__(self, id, frames, positions, velocities, groups, image_reader):
@@ -57,9 +60,62 @@ class ProcessData(object):
     def groups_file(self):
         return os.path.join(self.folder, 'groups.txt')
 
-    @abc.abstractmethod
-    def data_file(self, i):
-        raise NotImplementedError('Implement in sublcass')
+    @property
+    def data_folder(self):
+        data_folder = os.path.join(self.folder, '{0}_tfrecords'.format(params['feature_type']))
+        if not os.path.exists(data_folder):
+            os.mkdir(data_folder)
+        return data_folder
+
+    def train_data_file(self, i):
+        return os.path.join(self.data_folder, 'train_{0:04d}.tfrecords'.format(i))
+
+    def val_data_file(self, i):
+        return os.path.join(self.data_folder, 'val_{0:04d}.tfrecords'.format(i))
+
+    @property
+    def all_train_data_files(self):
+        i = 0
+        data_files = []
+
+        while os.path.exists(self.train_data_file(i)):
+            data_files.append(self.train_data_file(i))
+            i += 1
+
+        return data_files
+
+    @property
+    def all_val_data_files(self):
+        i = 0
+        data_files = []
+
+        while os.path.exists(self.val_data_file(i)):
+            data_files.append(self.val_data_file(i))
+            i += 1
+
+        return data_files
+
+    @property
+    def all_data_files(self):
+        return self.all_train_data_files + self.all_val_data_files
+
+    @property
+    def reshape_data_file(self):
+        return os.path.join(self.data_folder, 'reshape.pkl')
+
+    @property
+    def input_shape(self):
+        with open(self.reshape_data_file, 'r') as f:
+            d = pickle.load(f)
+        return d['input']
+
+    @property
+    def output_shape(self):
+        with open(self.reshape_data_file, 'r') as f:
+            d = pickle.load(f)
+        return d['output']
+
+
 
     ###############
     ### Parsing ###

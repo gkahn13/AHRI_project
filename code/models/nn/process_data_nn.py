@@ -1,5 +1,8 @@
 import os
+import random
+import pickle
 
+import numpy as np
 import tensorflow as tf
 
 from general.models.process_data import ProcessData
@@ -11,46 +14,40 @@ class ProcessDataNN(ProcessData):
     def __init__(self, folder):
         ProcessData.__init__(self, folder)
 
-        self.K = params['K']
-        self.H = params['H']
-        self.feature_type = params['feature_type']
-
-        for k, v in params['process_data'].items():
-            setattr(self, k, v)
-
-    #############
-    ### Files ###
-    #############
-
-    def data_file(self, i):
-        data_folder = os.path.join(self.folder, '{0}_tfrecords'.format(self.feature_type))
-        if not os.path.exists(data_folder):
-            os.mkdir(data_folder)
-        return os.path.join(data_folder, '{0:04d}.tfrecords'.format(i))
-
     #################
     ### Save data ###
     #################
 
     def save_data(self, pedestrians):
         ### only keep long enough trajectories
-        pedestrians = [ped for ped in pedestrians if len(ped) >= self.K + self.H]
+        pedestrians = [ped for ped in pedestrians if len(ped) >= params['K'] + params['H']]
+
+        ### split into train/val by trajectory
+        random.shuffle(pedestrians)
+        num_val = int(params['val_pct'] * len(pedestrians))
+        val_pedestrians = pedestrians[:num_val]
+        train_pedestrians = pedestrians[num_val:]
 
         ### select feature method
-        if self.feature_type == 'position':
+        if params['feature_type'] == 'position':
             features_method = self.position_features
+            reshape_data = self.position_reshape_data
         else:
-            raise Exception('Feature type {0} not valid'.format(self.feature_type))
+            raise Exception('Feature type {0} not valid'.format(params['feature_type']))
 
         ### delete previous features
-        i = 0
-        while os.path.exists(self.data_file(i)):
-            os.remove(self.data_file(i))
-            i += 1
+        for data_file in self.all_data_files:
+            os.remove(data_file)
 
         ### save features
-        for fname, features in features_method(pedestrians):
+        for fname, features in features_method(self.train_data_file, train_pedestrians):
             self.save_tfrecord(fname, features)
+        for fname, features in features_method(self.val_data_file, val_pedestrians):
+            self.save_tfrecord(fname, features)
+
+        ### save reshape data
+        with open(self.reshape_data_file, 'w') as f:
+            pickle.dump(reshape_data, f)
 
     def save_tfrecord(self, fname, features):
         writer = tf.python_io.TFRecordWriter(fname)
@@ -77,27 +74,23 @@ class ProcessDataNN(ProcessData):
     def _bytes_feature(value):
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
-    def position_features(self, pedestrians):
+    def position_features(self, data_file_func, pedestrians):
         feature_num = 0
         features = []
         for ped in pedestrians:
-            for start in xrange(self.K, len(ped) - (self.K + self.H)):
-                fname = self.data_file(feature_num)
+            for start in xrange(params['K'], len(ped) - (params['K'] + params['H'])):
+                fname = data_file_func(feature_num)
                 feature_fname = os.path.splitext(os.path.basename(fname))[0]
-                input = ped.positions[start - self.K + 1:start + 1]
-                output = ped.positions[start + 1:start + self.H + 1]
+                input = ped.positions[start - params['K'] + 1:start + 1]
+                output = ped.positions[start + 1:start + params['H'] + 1]
 
                 features.append({
                     'fname': ProcessDataNN._bytes_feature(feature_fname),
                     'input': ProcessDataNN._floatlist_feature(input.ravel().tolist()),
                     'output': ProcessDataNN._floatlist_feature(output.ravel().tolist()),
-                    'K': ProcessDataNN._int64list_feature([self.K]),
-                    'H': ProcessDataNN._int64list_feature([self.H]),
-                    'dinput': ProcessDataNN._int64list_feature([input.shape[1]]),
-                    'doutput': ProcessDataNN._int64list_feature([output.shape[1]])
                 })
 
-                if len(features) >= self.batch_size:
+                if len(features) >= params['features_per_file']:
                     yield fname, features
                     features = []
                     feature_num += 1
@@ -105,7 +98,12 @@ class ProcessDataNN(ProcessData):
         if len(features) >= 0:
             yield fname, features
 
-
+    @property
+    def position_reshape_data(self):
+        return {
+            'input': [params['K'], 2],
+            'output': [params['H'], 2]
+        }
 
 
 
