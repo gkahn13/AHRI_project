@@ -2,17 +2,14 @@ import os
 import random
 import pickle
 
-import numpy as np
 import tensorflow as tf
 
 from general.models.process_data import ProcessData
 
-from config import params
-
 class ProcessDataNN(ProcessData):
 
-    def __init__(self, folder):
-        ProcessData.__init__(self, folder)
+    def __init__(self, folder, params):
+        ProcessData.__init__(self, folder, params)
 
     #################
     ### Save data ###
@@ -20,20 +17,20 @@ class ProcessDataNN(ProcessData):
 
     def save_data(self, pedestrians):
         ### only keep long enough trajectories
-        pedestrians = [ped for ped in pedestrians if len(ped) >= params['K'] + params['H']]
+        pedestrians = [ped for ped in pedestrians if len(ped) >= self.params['K'] + self.params['H']]
 
         ### split into train/val by trajectory
         random.shuffle(pedestrians)
-        num_val = int(params['val_pct'] * len(pedestrians))
+        num_val = int(self.params['val_pct'] * len(pedestrians))
         val_pedestrians = pedestrians[:num_val]
         train_pedestrians = pedestrians[num_val:]
 
         ### select feature method
-        if params['feature_type'] == 'position':
+        if self.params['feature_type'] == 'position':
             features_method = self.position_features
             reshape_data = self.position_reshape_data
         else:
-            raise Exception('Feature type {0} not valid'.format(params['feature_type']))
+            raise Exception('Feature type {0} not valid'.format(self.params['feature_type']))
 
         ### delete previous features
         for data_file in self.all_data_files:
@@ -78,11 +75,11 @@ class ProcessDataNN(ProcessData):
         feature_num = 0
         features = []
         for ped in pedestrians:
-            for start in xrange(params['K'], len(ped) - (params['K'] + params['H'])):
+            for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
                 fname = data_file_func(feature_num)
-                feature_fname = os.path.splitext(os.path.basename(fname))[0]
-                input = ped.positions[start - params['K'] + 1:start + 1]
-                output = ped.positions[start + 1:start + params['H'] + 1]
+                feature_fname = '{0}_{1}'.format(os.path.splitext(os.path.basename(fname))[0], len(features))
+                input = ped.positions[start - self.params['K'] + 1:start + 1]
+                output = ped.positions[start + 1:start + self.params['H'] + 1]
 
                 features.append({
                     'fname': ProcessDataNN._bytes_feature(feature_fname),
@@ -90,7 +87,7 @@ class ProcessDataNN(ProcessData):
                     'output': ProcessDataNN._floatlist_feature(output.ravel().tolist()),
                 })
 
-                if len(features) >= params['features_per_file']:
+                if len(features) >= self.params['features_per_file']:
                     yield fname, features
                     features = []
                     feature_num += 1
@@ -101,8 +98,8 @@ class ProcessDataNN(ProcessData):
     @property
     def position_reshape_data(self):
         return {
-            'input': [params['K'], 2],
-            'output': [params['H'], 2]
+            'input': [self.params['K'], 2],
+            'output': [self.params['H'], 2]
         }
 
 

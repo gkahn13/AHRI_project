@@ -5,8 +5,6 @@ import pickle
 import numpy as np
 import imageio
 
-from config import params
-
 class Pedestrian(object):
     def __init__(self, id, frames, positions, velocities, groups, image_reader):
         self.id = id
@@ -31,8 +29,9 @@ class ProcessData(object):
     Process data for ETHZ BIWI Walking Pedestrians Dataset
     """
 
-    def __init__(self, folder):
+    def __init__(self, folder, params):
         self.folder = folder
+        self.params = params
 
         assert(os.path.exists(self.annotation_file))
         assert(os.path.exists(self.video_file))
@@ -62,7 +61,7 @@ class ProcessData(object):
 
     @property
     def data_folder(self):
-        data_folder = os.path.join(self.folder, '{0}_tfrecords'.format(params['feature_type']))
+        data_folder = os.path.join(self.folder, '{0}_tfrecords'.format(self.params['feature_type']))
         if not os.path.exists(data_folder):
             os.mkdir(data_folder)
         return data_folder
@@ -114,8 +113,6 @@ class ProcessData(object):
         with open(self.reshape_data_file, 'r') as f:
             d = pickle.load(f)
         return d['output']
-
-
 
     ###############
     ### Parsing ###

@@ -15,5 +15,7 @@ gpu_fraction: 0.4
 val_pct: 0.2
 batch_size: 2
 learning_rate: 0.001
-epochs: 50
-display_batch: 4
+max_step: 10000
+val_step: 100
+display_step: 10
+save_step: 1000

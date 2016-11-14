@@ -23,7 +23,7 @@ class MLPlotter:
             figsize = (30, 7)
         self.f, self.axes = plt.subplots(shape[0], shape[1], figsize=figsize)
         mng = plt.get_current_fig_manager()
-        mng.window.showMinimized()
+        # mng.window.showMinimized()
         plt.suptitle(title)
         plt.show(block=False)
         plt.pause(0.5)
@@ -82,10 +82,14 @@ class MLPlotter:
 
 class PredictionModel(object):
 
-    def __init__(self, exp_folder):
+    def __init__(self, exp_folder, data_folder, params):
         self.exp_folder = exp_folder
         if not os.path.exists(self.exp_folder):
             os.makedirs(self.exp_folder)
+        self.data_folder = data_folder
+        assert(os.path.exists(self.data_folder))
+        self.params = params
+
         self.logger = get_logger(self.__class__.__name__, 'debug', os.path.join(self.exp_folder, 'debug.txt'))
 
         ### copy file model file over
@@ -95,9 +99,6 @@ class PredictionModel(object):
         else:
             self.logger.info('Creating NEW graph')
             shutil.copyfile(self._this_file, self._code_file)
-
-        ### process data
-        self.process_data.process()
 
     #############
     ### Files ###

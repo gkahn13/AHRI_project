@@ -8,16 +8,13 @@ from models.nn.process_data_nn import ProcessDataNN
 
 from general.models.prediction_model import PredictionModel, MLPlotter
 
-from config import params
-
 class PredictionModelNN(PredictionModel):
 
-    def __init__(self, exp_folder, data_folder):
-        self.process_data = ProcessDataNN(data_folder)
-        PredictionModel.__init__(self, exp_folder)
+    def __init__(self, exp_folder, data_folder, params):
+        self.process_data = ProcessDataNN(data_folder, params)
+        PredictionModel.__init__(self, exp_folder, data_folder, params)
 
         self._graph_inference = self._get_old_graph_inference(graph_type=params['graph_type'])
-
 
     #############
     ### Files ###
@@ -35,12 +32,12 @@ class PredictionModelNN(PredictionModel):
     ### Graph methods ###
     #####################
 
-    def _graph_input_output_from_file(self, is_train):
+    def _graph_input_output_from_file(self, is_train, shuffle=True):
         with tf.name_scope('train_input_output_from_file' if is_train else 'val_input_output_from_file'):
             ### create file queue
             fnames = self.process_data.all_train_data_files if is_train else self.process_data.all_val_data_files
             random.shuffle(fnames)
-            filename_queue = tf.train.string_input_producer(fnames, num_epochs=params['epochs'], shuffle=True, capacity=8)
+            filename_queue = tf.train.string_input_producer(fnames, num_epochs=None, shuffle=shuffle, capacity=8)
 
             ### read and decode
             reader = tf.TFRecordReader()
@@ -59,10 +56,15 @@ class PredictionModelNN(PredictionModel):
             output = tf.reshape(parsed_example['output'], self.process_data.output_shape)
 
             ### shuffle and put into batches
-            fnames, inputs, outputs = tf.train.shuffle_batch(
-                [fname, input, output], batch_size=params['batch_size'], num_threads=2,
-                capacity=1000 + 3 * params['batch_size'],
-                min_after_dequeue=1000)
+            if shuffle:
+                fnames, inputs, outputs = tf.train.shuffle_batch(
+                    [fname, input, output], batch_size=self.params['batch_size'], num_threads=2,
+                    capacity=1000 + 3 * self.params['batch_size'],
+                    min_after_dequeue=1000)
+            else:
+                fnames, inputs, outputs = tf.train.batch(
+                    [fname, input, output], batch_size=self.params['batch_size'], num_threads=2,
+                    capacity=1000 + 3 * self.params['batch_size'])
 
         return fnames, inputs, outputs, filename_queue
 
@@ -85,8 +87,8 @@ class PredictionModelNN(PredictionModel):
             raise Exception('graph_type {0} is not valid'.format(graph_type))
 
     @staticmethod
-    def _graph_inference_fc(name, input, input_shape, output_shape, reuse=False):
-        tf.set_random_seed(params['random_seed'])
+    def _graph_inference_fc(name, input, input_shape, output_shape, reuse=False, random_seed=None):
+        tf.set_random_seed(random_seed)
 
         with tf.name_scope(name + '_inference'):
 
@@ -125,13 +127,13 @@ class PredictionModelNN(PredictionModel):
     def _graph_cost(self, name, pred_output, output):
         with tf.name_scope(name + '_cost_and_err'):
             cost = tf.reduce_mean((pred_output - output) * (pred_output - output))
-            weight_decay = params['reg'] * tf.add_n(tf.get_collection('weight_decays'))
+            weight_decay = self.params['reg'] * tf.add_n(tf.get_collection('weight_decays'))
             total_cost = cost + weight_decay
 
         return total_cost, cost
 
     def _graph_optimize(self, cost):
-        opt = tf.train.AdamOptimizer(learning_rate=params['learning_rate'])
+        opt = tf.train.AdamOptimizer(learning_rate=self.params['learning_rate'])
         return opt.minimize(cost), opt.compute_gradients(cost)
 
     def _graph_initialize(self):
@@ -139,8 +141,8 @@ class PredictionModelNN(PredictionModel):
         init_op = tf.group(tf.initialize_all_variables(),
                            tf.initialize_local_variables())
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(params['device'])
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=params['gpu_fraction'])
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.params['device'])
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=self.params['gpu_fraction'])
         sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options,
                                                 log_device_placement=False,
                                                 allow_soft_placement=True))
@@ -170,21 +172,26 @@ class PredictionModelNN(PredictionModel):
         return epoch
 
     def train(self):
+        ### process data
+        self.process_data.process()
+
         tf.reset_default_graph()
         ### prepare for trainining
-        train_fnames, train_input, train_output, train_queue = self._graph_input_output_from_file(is_train=True)
+        train_fnames, train_input, train_output, train_queue = self._graph_input_output_from_file(is_train=True,
+                                                                                                  shuffle=True)
         train_pred_output = self._graph_inference('train', train_input,
                                                   self.process_data.input_shape, self.process_data.output_shape,
-                                                  reuse=False)
+                                                  reuse=False, random_seed=self.params['random_seed'])
         train_total_cost, train_cost = self._graph_cost('train', train_pred_output, train_output)
         train_optimizer, train_grads = self._graph_optimize(train_total_cost)
         train_fnames_dict = defaultdict(int)
 
         ### create validation
-        val_fnames, val_input, val_output, val_queue = self._graph_input_output_from_file(is_train=False)
+        val_fnames, val_input, val_output, val_queue = self._graph_input_output_from_file(is_train=False,
+                                                                                          shuffle=False)
         val_pred_output = self._graph_inference('val', val_input,
                                                 self.process_data.input_shape, self.process_data.output_shape,
-                                                reuse=True)
+                                                reuse=True, random_seed=self.params['random_seed'])
         val_total_cost, val_cost = self._graph_cost('val', val_pred_output, val_output)
         val_fnames_dict = defaultdict(int)
 
@@ -217,12 +224,12 @@ class PredictionModelNN(PredictionModel):
             val_epoch = 0
             step = 0
             epoch_start = time.time()
-            while not coord.should_stop():
+            while not coord.should_stop() and step < self.params['max_step']:
                 if step == 0:
                     for _ in xrange(10): print('')
 
                 ### validation
-                if new_train_epoch != train_epoch:
+                if step % self.params['val_step'] == 0:
                     val_total_cost_values = []
                     val_cost_values = []
                     self.logger.debug('\tComputing validation...')
@@ -241,15 +248,18 @@ class PredictionModelNN(PredictionModel):
                     plotter.add_val('total_cost', np.mean(val_total_cost_values))
                     plotter.add_val('cost', np.mean(val_cost_values))
                     plotter.plot()
-                    self.save(self._model_file)  # save every epoch
-                    plotter.save(self.exp_folder)
 
                     self.logger.debug(
                         'Epoch: {0:04d}, cost val = {1:.3f}, total cost val = {2:.3f} ({3:.2f} s per {4:04d} samples)'.format(
-                            train_epoch + 1, 100 * np.mean(val_total_cost_values), np.mean(val_cost_values),
+                            train_epoch + 1, np.mean(val_cost_values), np.mean(val_total_cost_values),
                             time.time() - epoch_start,
-                            step * params['batch_size'] / (train_epoch + 1) if train_epoch >= 0 else 0))
+                            step * self.params['batch_size'] / (train_epoch + 1) if train_epoch >= 0 else 0))
                     epoch_start = time.time()
+
+                ### save
+                if step % self.params['save_step'] == 0:
+                    self.save()  # save every epoch
+                    plotter.save(self.exp_folder)
 
                 train_epoch = new_train_epoch
 
@@ -263,13 +273,14 @@ class PredictionModelNN(PredictionModel):
                 new_train_epoch = self._get_epoch(train_fnames_dict, train_fnames_value)
 
                 # Print an overview fairly often.
-                if step % params['display_batch'] == 0 and step > 0:
-                    plotter.add_train('total_cost', step * params['batch_size'], np.mean(train_total_cost_values))
-                    plotter.add_train('cost', step * params['batch_size'], np.mean(train_cost_values))
+                if step % self.params['display_step'] == 0 and step > 0:
+                    plotter.add_train('total_cost', step * self.params['batch_size'], np.mean(train_total_cost_values))
+                    plotter.add_train('cost', step * self.params['batch_size'], np.mean(train_cost_values))
                     plotter.plot()
 
                     self.logger.debug(
-                        '\tepoch {0:d}, cost: {1:6.2f}, total cost: {2:6.2f}'.format(
+                        '\tstep {0:05d}, epoch {1:d}, cost: {2:6.2f}, total cost: {3:6.2f}'.format(
+                            step,
                             train_epoch,
                             np.mean(train_cost_values),
                             np.mean(train_total_cost_values)))
@@ -284,7 +295,7 @@ class PredictionModelNN(PredictionModel):
             coord.request_stop()
 
         coord.join(threads)
-        self.save(self._model_file)
+        self.save()
         plotter.save(self.exp_folder)
         self.sess.close()
 
@@ -292,7 +303,7 @@ class PredictionModelNN(PredictionModel):
 
         ### prepare for feeding
         self._graph_setup_eval()
-        self.load(self._model_file)
+        self.load()
 
     ##################
     ### Evaluating ###
@@ -313,11 +324,11 @@ class PredictionModelNN(PredictionModel):
     ### Load/save/reset/close ###
     #############################
 
-    def load(self, model_file):
-        self.saver.restore(self.sess, model_file)
+    def load(self):
+        self.saver.restore(self.sess, self._model_file)
 
-    def save(self, model_file):
-        self.saver.save(self.sess, model_file)
+    def save(self):
+        self.saver.save(self.sess, self._model_file)
 
     def close(self):
         """ Release tf session """

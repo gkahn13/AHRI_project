@@ -2,56 +2,92 @@
 # Runs specific experiment #
 ############################
 
-import argparse
-import os
+import argparse, yaml
+import os, shutil
 import numpy as np, random
 
-from models.nn.process_data_nn import ProcessDataNN
+from general.models.analyze_model import AnalyzeModel
+
 from models.nn.prediction_model_nn import PredictionModelNN
 
-from config import load_params, params
+DATA_FOLDER = '/home/gkahn/code/AHRI_project/data/seq_hotel'
+EXP_PARENT_FOLDER = '/home/gkahn/code/AHRI_project/exps/'
+
+def load_yaml_from_model(model):
+    yaml_path = os.path.join(os.path.dirname(__file__), 'models/{0}/params_{0}.yaml'.format(model))
+    with open(yaml_path, "r") as f:
+        params = yaml.load(f)
+    params['yaml_path'] = yaml_path
+    return params
+
+def load_yaml_from_exp(model, exp):
+    yaml_path = os.path.join(EXP_PARENT_FOLDER, model, exp, 'params.yaml')
+    with open(yaml_path, "r") as f:
+        params = yaml.load(f)
+    return params
+
+def get_exp_folder(model, params):
+    return os.path.join(EXP_PARENT_FOLDER, model, params['exp'])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
 
-    parser_process = subparsers.add_parser('process')
-    parser_process.set_defaults(run='process')
     parser_train = subparsers.add_parser('train')
     parser_train.set_defaults(run='train')
     parser_analyze = subparsers.add_parser('analyze')
     parser_analyze.set_defaults(run='analyze')
 
-    ### all arguments
-    for subparser in (parser_process, parser_train):
-        subparser.add_argument('model', type=str, choices=('nn',))
+    ### parser train
+    parser_train.add_argument('model', type=str, choices=('nn',))
+
+    ### parser analyze
+    parser_analyze.add_argument('exps', nargs='+')
 
     args = parser.parse_args()
     run = args.run
-    model = args.model
-    data_folder = '/home/gkahn/code/AHRI_project/data/seq_hotel'
-    exp_folder = '/home/gkahn/code/AHRI_project/exps/'
 
-    # load yaml so all files can access
-    yaml_path = os.path.join(os.path.dirname(__file__), 'models/{0}/params_{0}.yaml'.format(model))
-    load_params(yaml_path)
-    params['yaml_path'] = yaml_path
+    if run == 'train':
+        model = args.model
 
-    np.random.seed(params['random_seed'])
-    random.seed(params['random_seed'])
+        ### load yaml so all files can access
+        params = load_yaml_from_model(model)
 
-    if run == 'process':
+        np.random.seed(params['random_seed'])
+        random.seed(params['random_seed'])
+
+        ### create exp folder
+        exp_folder = os.path.join(EXP_PARENT_FOLDER, model, params['exp'])
+        assert(not os.path.exists(exp_folder))
+        os.makedirs(exp_folder)
+        shutil.copy(params['yaml_path'], os.path.join(exp_folder, 'params.yaml'))
+
         if model == 'nn':
-            process_data = ProcessDataNN(data_folder)
-
-        process_data.process()
-
-    elif run == 'train':
-        exp_folder = os.path.join(exp_folder, model, params['exp'])
-        if model == 'nn':
-            prediction_model = PredictionModelNN(exp_folder, data_folder)
+            prediction_model = PredictionModelNN(exp_folder, DATA_FOLDER, params)
 
         prediction_model.train()
+    elif run == 'analyze':
+        exps = args.exps
+
+        prediction_models = []
+        for exp in exps:
+            model, exp = exp.split('/')
+            params = load_yaml_from_exp(model, exp)
+            exp_folder = get_exp_folder(model, params)
+
+            assert(os.path.exists(exp_folder))
+
+            if model == 'nn':
+                prediction_model = PredictionModelNN(exp_folder, DATA_FOLDER, params)
+            else:
+                raise Exception('Model {0} not valid'.format(model))
+
+            prediction_models.append(prediction_model)
+
+        analyze_model = AnalyzeModel(prediction_models)
+
+        ### TODO: run
+
     else:
         raise Exception('Run {0} is not valid'.format(run))
 
