@@ -1,6 +1,7 @@
 import abc
 import os
 import pickle
+import random
 
 import numpy as np
 import imageio
@@ -17,12 +18,58 @@ class Pedestrian(object):
         assert(len(self.frames) == len(self.positions))
         assert(len(self.positions) == len(self.velocities))
 
+        self.inputs = []
+        self.outputs = []
+
     @property
     def images(self):
         return [np.array(self.image_reader.get_data(frame)) for frame in self.frames]
 
     def __len__(self):
         return len(self.positions)
+
+    def add_input_output(self, input, output):
+        self.inputs.append(input)
+        self.outputs.append(output)
+
+    @staticmethod
+    def save(pedestrians_file, pedestrians, video_file):
+        d = {
+            'video_file': video_file,
+            'pedestrians': [{
+                'id': ped.id,
+                'frames': ped.frames,
+                'positions': ped.positions,
+                'velocities': ped.velocities,
+                'groups': ped.groups,
+                'inputs': ped.inputs,
+                'outputs': ped.outputs,
+            } for ped in pedestrians]
+        }
+
+        with open(pedestrians_file, 'w') as f:
+            pickle.dump(d, f)
+
+    @staticmethod
+    def load(pedestrians_file):
+        with open(pedestrians_file, 'r') as f:
+            d = pickle.load(f)
+
+        image_reader = imageio.get_reader(d['video_file'])
+        pedestrians = []
+        for d_ped in d['pedestrians']:
+            ped = Pedestrian(id=d_ped['id'],
+                             frames=d_ped['frames'],
+                             positions=d_ped['positions'],
+                             velocities=d_ped['velocities'],
+                             groups=d_ped['groups'],
+                             image_reader=image_reader)
+            ped.inputs = d_ped['inputs']
+            ped.outputs = d_ped['outputs']
+
+            pedestrians.append(ped)
+
+        return pedestrians
 
 class ProcessData(object):
     """
@@ -99,18 +146,26 @@ class ProcessData(object):
         return self.all_train_data_files + self.all_val_data_files
 
     @property
-    def reshape_data_file(self):
+    def input_output_shape_file(self):
         return os.path.join(self.data_folder, 'reshape.pkl')
 
     @property
+    def train_pedestrians_file(self):
+        return os.path.join(self.data_folder, 'train_pedestrians.pkl')
+
+    @property
+    def val_pedestrians_file(self):
+        return os.path.join(self.data_folder, 'val_pedestrians.pkl')
+
+    @property
     def input_shape(self):
-        with open(self.reshape_data_file, 'r') as f:
+        with open(self.input_output_shape_file, 'r') as f:
             d = pickle.load(f)
         return d['input']
 
     @property
     def output_shape(self):
-        with open(self.reshape_data_file, 'r') as f:
+        with open(self.input_output_shape_file, 'r') as f:
             d = pickle.load(f)
         return d['output']
 
@@ -118,7 +173,7 @@ class ProcessData(object):
     ### Parsing ###
     ###############
 
-    def parse(self):
+    def parse_pedestrians(self):
         ### read annotation file
         annotation = np.loadtxt(self.annotation_file)
         frames = annotation[:, 0].astype(int)
@@ -150,18 +205,40 @@ class ProcessData(object):
 
         return pedestrians
 
+    ##############################
+    ### Compute inputs/outputs ###
+    ##############################
+
+    @abc.abstractmethod
+    def compute_inputs_outputs(self, pedestrians):
+        raise NotImplementedError('Implement in subclass')
+
     #################
     ### Save data ###
     #################
 
-    @abc.abstractmethod
-    def save_data(self, pedestrians):
-        raise NotImplementedError('Implement in subclass')
+    def save_pedestrians(self, pedestrians):
+        ### only keep long enough trajectories
+        pedestrians = [ped for ped in pedestrians if len(ped) >= self.params['K'] + self.params['H']]
+        ### split into train/val by trajectory
+        random.shuffle(pedestrians)
+        num_val = int(self.params['val_pct'] * len(pedestrians))
+        val_pedestrians = pedestrians[:num_val]
+        train_pedestrians = pedestrians[num_val:]
+
+        Pedestrian.save(self.train_pedestrians_file, train_pedestrians, self.video_file)
+        Pedestrian.save(self.val_pedestrians_file, val_pedestrians, self.video_file)
+
+        return train_pedestrians, val_pedestrians
+
+    def load_pedestrians(self):
+        return Pedestrian.load(self.train_pedestrians_file), Pedestrian.load(self.val_pedestrians_file)
 
     ###############
     ### Process ###
     ###############
 
     def process(self):
-        pedestrians = self.parse()
-        self.save_data(pedestrians)
+        pedestrians = self.parse_pedestrians()
+        self.compute_inputs_outputs(pedestrians)
+        self.save_pedestrians(pedestrians)

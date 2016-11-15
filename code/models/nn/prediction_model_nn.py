@@ -16,6 +16,8 @@ class PredictionModelNN(PredictionModel):
 
         self._graph_inference = self._get_old_graph_inference(graph_type=params['graph_type'])
 
+        self._graph_setup_eval()
+
     #############
     ### Files ###
     #############
@@ -318,7 +320,7 @@ class PredictionModelNN(PredictionModel):
         self.sess, _, _, self.saver = self._graph_initialize()
 
     def eval(self, input):
-        return self.sess.run([self.output_pred], feed_dict={self.input: input})[0]
+        return self.sess.run([self.output_pred], feed_dict={self.input: input})
 
     #############################
     ### Load/save/reset/close ###

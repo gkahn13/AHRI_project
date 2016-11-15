@@ -6,7 +6,7 @@ import argparse, yaml
 import os, shutil
 import numpy as np, random
 
-from general.models.analyze_model import AnalyzeModel
+from general.models.analyze_model import AnalyzeModels
 
 from models.nn.prediction_model_nn import PredictionModelNN
 
@@ -84,9 +84,8 @@ if __name__ == '__main__':
 
             prediction_models.append(prediction_model)
 
-        analyze_model = AnalyzeModel(prediction_models)
-
-        ### TODO: run
+        analyze_models = AnalyzeModels(prediction_models)
+        analyze_models.run()
 
     else:
         raise Exception('Run {0} is not valid'.format(run))

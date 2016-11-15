@@ -1,4 +1,4 @@
-exp: exp0
+exp: exp1
 random_seed: 1
 
 K: 2 # number previous timesteps to take in (i.e. 1 means only current)
@@ -15,7 +15,7 @@ gpu_fraction: 0.4
 val_pct: 0.2
 batch_size: 2
 learning_rate: 0.001
-max_step: 10000
+max_step: 1500
 val_step: 100
 display_step: 10
 save_step: 1000
