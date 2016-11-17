@@ -128,6 +128,9 @@ class PredictionModel(object):
 
     @abc.abstractmethod
     def eval(self, input):
+        """
+        :return np.array [batch_size, num_sample, H, 2]
+        """
         raise NotImplementedError('Implement in subclass')
 
     #############################

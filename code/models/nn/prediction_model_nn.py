@@ -320,7 +320,11 @@ class PredictionModelNN(PredictionModel):
         self.sess, _, _, self.saver = self._graph_initialize()
 
     def eval(self, input):
-        return self.sess.run([self.output_pred], feed_dict={self.input: input})
+        pred_output = np.expand_dims(self.sess.run(self.output_pred, feed_dict={self.input: input}), 1)
+        assert(len(pred_output.shape) == 4)
+        assert(pred_output.shape[2] == self.params['H'])
+        assert(pred_output.shape[3] == 2)
+        return pred_output
 
     #############################
     ### Load/save/reset/close ###

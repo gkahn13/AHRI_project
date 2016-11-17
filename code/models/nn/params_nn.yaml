@@ -1,8 +1,17 @@
+#########################
+### Common parameters ###
+#########################
+
 exp: exp1
 random_seed: 1
 
 K: 2 # number previous timesteps to take in (i.e. 1 means only current)
 H: 2 # number future timesteps to predict
+
+##############################
+### NN specific parameters ###
+##############################
+
 feature_type: 'position'
 features_per_file: 32
 

@@ -108,7 +108,7 @@ class ProcessData(object):
 
     @property
     def data_folder(self):
-        data_folder = os.path.join(self.folder, '{0}_tfrecords'.format(self.params['feature_type']))
+        data_folder = os.path.join(self.folder, self.params['exp'])
         if not os.path.exists(data_folder):
             os.mkdir(data_folder)
         return data_folder
