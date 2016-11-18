@@ -112,7 +112,7 @@ class PredictionModel(object):
     @property
     def _code_file(self):
         return os.path.join(os.path.abspath(self.exp_folder),
-                            'prediction_model_{0}.py'.format(os.path.basename(self.exp_folder)))
+                            '{0}_{1}.py'.format(self.__class__.__name__, os.path.basename(self.exp_folder)))
 
     ################
     ### Training ###

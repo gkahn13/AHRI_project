@@ -106,7 +106,7 @@ class ProcessData(object):
     def groups_file(self):
         return os.path.join(self.folder, 'groups.txt')
 
-    @property
+    @abc.abstractproperty
     def data_folder(self):
         data_folder = os.path.join(self.folder, self.params['exp'])
         if not os.path.exists(data_folder):

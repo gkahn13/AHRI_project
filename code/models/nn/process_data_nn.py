@@ -12,6 +12,17 @@ class ProcessDataNN(ProcessData):
     def __init__(self, folder, params):
         ProcessData.__init__(self, folder, params)
 
+    #############
+    ### Files ###
+    #############
+
+    @property
+    def data_folder(self):
+        data_folder = os.path.join(self.folder, 'nn_' + self.params['exp'])
+        if not os.path.exists(data_folder):
+            os.mkdir(data_folder)
+        return data_folder
+
     ##############################
     ### Compute inputs/outputs ###
     ##############################

@@ -82,6 +82,8 @@ if __name__ == '__main__':
 
             if model == 'nn':
                 prediction_model = PredictionModelNN(exp_folder, DATA_FOLDER, params)
+            elif model == 'bd_nn':
+                prediction_model = PredictionModelBDNN(exp_folder, DATA_FOLDER, params)
             else:
                 raise Exception('Model {0} not valid'.format(model))
 

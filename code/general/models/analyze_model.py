@@ -50,21 +50,29 @@ class AnalyzeModels(object):
     def average_displacement_metric(outputs, pred_outputs, average_samples):
         if average_samples:
             pred_outputs_avg = pred_outputs.mean(axis=1)
-            return np.linalg.norm(outputs - pred_outputs_avg, axis=2).sum(axis=1) # norm each timestep, sum over timesteps
+            dists_mean = np.linalg.norm(outputs - pred_outputs_avg, axis=2).sum(axis=1) # norm each timestep, sum over timesteps
+            dists_std = np.zeros(dists_mean.shape)
         else:
             num_samples = pred_outputs.shape[1]
             outputs_tiled = np.tile(np.expand_dims(outputs, 1), (1, num_samples, 1, 1))
-            return np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).mean(axis=1) # norm each timestep, sum over timesteps, mean over samples
+            dists_mean = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).mean(axis=1) # norm each timestep, sum over timesteps, mean over samples
+            dists_std = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).std(axis=1)
+
+        return dists_mean, dists_std
 
     @staticmethod
     def final_displacement_metric(outputs, pred_outputs, average_samples):
         if average_samples:
             pred_outputs_avg = pred_outputs.mean(axis=1)
-            return np.linalg.norm(outputs[:, -1, :] - pred_outputs_avg[:, -1, :], axis=1)
+            dists_mean = np.linalg.norm(outputs[:, -1, :] - pred_outputs_avg[:, -1, :], axis=1)
+            dists_std = np.zeros(dists_mean.shape)
         else:
             num_samples = pred_outputs.shape[1]
             outputs_tiled = np.tile(np.expand_dims(outputs, 1), (1, num_samples, 1, 1))
-            return np.linalg.norm(outputs_tiled[:, :, -1, :] - pred_outputs[:, :, -1, :], axis=2).mean(axis=1)
+            dists_mean = np.linalg.norm(outputs_tiled[:, :, -1, :] - pred_outputs[:, :, -1, :], axis=2).mean(axis=1)
+            dists_std = np.linalg.norm(outputs_tiled[:, :, -1, :] - pred_outputs[:, :, -1, :], axis=2).std(axis=1)
+
+        return dists_mean, dists_std
 
     # @staticmethod
     # def nonlinear_displacement_metric(outputs, pred_outputs, average_samples):
@@ -84,34 +92,62 @@ class AnalyzeModels(object):
     ### Plotting ###
     ################
 
-    def plot_cost_histogram(self, title, displacement_metric, average_samples, num_bins=11):
-        f, ax = plt.subplots(1, 1)
+    def plot_cost_histogram(self, title, displacement_metric, average_samples, num_bins=21):
+        f, axes = plt.subplots(2, 1, sharex=True)
+        ax_hist = axes[0]
+        ax_hist_std = axes[1]
 
         ### get prediction distance error
-        l2_dists = []
+        dists_means = []
+        dists_stds = []
         labels = []
         for am in self.analyze_models:
             inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
-            l2_dists.append(displacement_metric(outputs, pred_outputs, average_samples))
+            dists_mean, dists_std = displacement_metric(outputs, pred_outputs, average_samples)
+            dists_means.append(dists_mean)
+            dists_stds.append(dists_std)
             labels.append(am.name)
 
-        ### plot histogram
-        bins = np.linspace(np.concatenate(l2_dists).min(), np.concatenate(l2_dists).max(), num_bins)
+        ### create histogram
+        bins = np.linspace(np.concatenate(dists_means).min(), np.concatenate(dists_means).max(), num_bins)
         hists = []
-        for l2_dist in l2_dists:
-            N = len(l2_dist)
-            hists.append(np.histogram(l2_dist, bins, weights=(1. / N) * np.ones(N))[0])
+        hists_std = []
+        for dists_mean, dists_std in zip(dists_means, dists_stds):
+            N = len(dists_mean)
+            hist, bin_edges = np.histogram(dists_mean, bins, weights=(1. / N) * np.ones(N))
+
+            hist_idxs = np.digitize(dists_mean, bin_edges) - 1
+            hist_std = [dists_std[hist_idxs == i].mean() for i in xrange(len(hist))]
+
+            hists.append(hist)
+            hists_std.append(hist_std)
+
+
+        ### plot histogram
         bar_width = 0.8 * (bins[1] - bins[0]) / len(hists)
-        for i, (pcts, label) in enumerate(zip(hists, labels)):
-            ax.bar(bins[:-1] + i * bar_width, pcts, bar_width,
-                   color=cm.jet(i / float(len(hists))), label=label)
+        for i, (pcts, hist, hist_std, label) in enumerate(zip(hists, hists, hists_std, labels)):
+            color = cm.jet(i / float(len(hists)))
+            full_label = '{0}, mean: {1:.3f}'.format(label, np.mean(hist))
+
+            ax_hist.bar(bins[:-1] + i * bar_width, pcts, width=bar_width, color=color, label=full_label)
+            ax_hist_std.plot(bins[:-1], hist_std, color=color, label=full_label)
 
         ### formatting
-        ax.set_title(title)
-        ax.set_xlabel('L2 distance (meters)')
-        ax.set_ylabel('Fraction')
-        ax.legend()
-        ax.set_xticks(bins)
+        if average_samples:
+            title += ' (averaging samples)'
+        else:
+            title += ' (NOT averaging samples)'
+        f.suptitle(title)
+
+        ax_hist.set_ylabel('Fraction')
+
+        ax_hist_std.set_ylabel('Std (meters)')
+
+        for ax in axes:
+            ax.legend()
+            ax.set_xticks(bins)
+            ax.set_xlabel('L2 distance (meters)')
+
 
         plt.show(block=False)
         plt.pause(0.05)
@@ -119,6 +155,8 @@ class AnalyzeModels(object):
     def run(self):
         self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, True)
         self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, True)
+        self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
+        self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
 
         raw_input('Press enter to exit')
 

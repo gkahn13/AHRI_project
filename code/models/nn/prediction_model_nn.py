@@ -16,7 +16,7 @@ class PredictionModelNN(PredictionModel):
 
         self._graph_inference = self._get_old_graph_inference(graph_type=params['graph_type'])
 
-        self._graph_setup_eval()
+        self._graph_setup_eval_called = False
 
     #############
     ### Files ###
@@ -89,7 +89,7 @@ class PredictionModelNN(PredictionModel):
             raise Exception('graph_type {0} is not valid'.format(graph_type))
 
     @staticmethod
-    def _graph_inference_fc(name, input, input_shape, output_shape, reuse=False, random_seed=None):
+    def _graph_inference_fc(name, input, input_shape, output_shape, params, reuse=False, random_seed=None):
         tf.set_random_seed(random_seed)
 
         with tf.name_scope(name + '_inference'):
@@ -156,7 +156,7 @@ class PredictionModelNN(PredictionModel):
 
         # Set logs writer into folder /tmp/tensorflow_logs
         merged = tf.merge_all_summaries()
-        writer = tf.train.SummaryWriter('/tmp', graph_def=sess.graph_def)
+        writer = tf.train.SummaryWriter(self.exp_folder, graph_def=sess.graph_def)
 
         saver = tf.train.Saver(max_to_keep=None)
 
@@ -183,6 +183,7 @@ class PredictionModelNN(PredictionModel):
                                                                                                   shuffle=True)
         train_pred_output = self._graph_inference('train', train_input,
                                                   self.process_data.input_shape, self.process_data.output_shape,
+                                                  self.params,
                                                   reuse=False, random_seed=self.params['random_seed'])
         train_total_cost, train_cost = self._graph_cost('train', train_pred_output, train_output)
         train_optimizer, train_grads = self._graph_optimize(train_total_cost)
@@ -193,6 +194,7 @@ class PredictionModelNN(PredictionModel):
                                                                                           shuffle=False)
         val_pred_output = self._graph_inference('val', val_input,
                                                 self.process_data.input_shape, self.process_data.output_shape,
+                                                self.params,
                                                 reuse=True, random_seed=self.params['random_seed'])
         val_total_cost, val_cost = self._graph_cost('val', val_pred_output, val_output)
         val_fnames_dict = defaultdict(int)
@@ -312,14 +314,20 @@ class PredictionModelNN(PredictionModel):
     ##################
 
     def _graph_setup_eval(self):
+        self._graph_setup_eval_called = True
+
         tf.reset_default_graph()
         self.input, self.output = self._graph_input_output_from_placeholders()
         self.output_pred = self._graph_inference('eval', self.input,
                                                  self.process_data.input_shape, self.process_data.output_shape,
+                                                 self.params,
                                                  reuse=False)
         self.sess, _, _, self.saver = self._graph_initialize()
 
     def eval(self, input):
+        if not self._graph_setup_eval_called:
+            self._graph_setup_eval()
+
         pred_output = np.expand_dims(self.sess.run(self.output_pred, feed_dict={self.input: input}), 1)
         assert(len(pred_output.shape) == 4)
         assert(pred_output.shape[2] == self.params['H'])
@@ -331,6 +339,8 @@ class PredictionModelNN(PredictionModel):
     #############################
 
     def load(self):
+        if not self._graph_setup_eval_called:
+            self._graph_setup_eval()
         self.saver.restore(self.sess, self._model_file)
 
     def save(self):

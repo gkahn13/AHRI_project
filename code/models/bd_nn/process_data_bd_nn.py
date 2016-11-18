@@ -16,6 +16,17 @@ class ProcessDataBDNN(ProcessDataNN):
     def __init__(self, folder, params):
         ProcessDataNN.__init__(self, folder, params)
 
+    #############
+    ### Files ###
+    #############
+
+    @property
+    def data_folder(self):
+        data_folder = os.path.join(self.folder, 'bd_nn_' + self.params['exp'])
+        if not os.path.exists(data_folder):
+            os.mkdir(data_folder)
+        return data_folder
+
     ##############################
     ### Compute inputs/outputs ###
     ##############################
@@ -44,7 +55,7 @@ class ProcessDataBDNN(ProcessDataNN):
             while i < N:
                 features = []
 
-                fname = data_file_func(i)
+                fname = data_file_func(i // self.params['features_per_file'])
                 for j in xrange(min(self.params['features_per_file'], N - i)):
                     feature = {
                         'fname': ProcessDataNN._bytes_feature(

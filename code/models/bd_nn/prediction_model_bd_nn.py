@@ -15,7 +15,7 @@ class PredictionModelBDNN(PredictionModelNN):
 
         self._graph_inference = self._get_old_graph_inference(graph_type=params['graph_type'])
 
-        self._graph_setup_eval()
+        self._graph_setup_eval_called = False
 
     #############
     ### Files ###
@@ -84,7 +84,7 @@ class PredictionModelBDNN(PredictionModelNN):
     def _get_old_graph_inference(self, graph_type):
         self.logger.info('Graph type: {0}'.format(graph_type))
         sys.path.append(os.path.dirname(self._code_file))
-        exec ('from {0} import {1} as OldPredictionModel'.format(
+        exec('from {0} import {1} as OldPredictionModel'.format(
             os.path.basename(self._code_file).split('.')[0], 'PredictionModelBDNN'))
 
         if graph_type == 'fc':
@@ -93,8 +93,10 @@ class PredictionModelBDNN(PredictionModelNN):
             raise Exception('graph_type {0} is not valid'.format(graph_type))
 
     @staticmethod
-    def _graph_inference_fc(name, input, input_shape, output_shape, reuse=False, random_seed=None):
+    def _graph_inference_fc(name, input, input_shape, output_shape, params, reuse=False, random_seed=None):
         tf.set_random_seed(random_seed)
+
+        dropout = params['dropout']
 
         pred_output = []
         with tf.name_scope(name + '_inference'):
@@ -127,6 +129,8 @@ class PredictionModelBDNN(PredictionModelNN):
                         layer = tf.add(tf.matmul(layer, weight_b), bias_b)
                         if i < len(weights_b) - 1:
                             layer = tf.nn.relu(layer)
+                        if dropout is not None:
+                            layer = tf.nn.dropout(layer, keep_prob=dropout)
 
                 pred_output_b = tf.reshape(layer, [-1] + output_shape)
                 pred_output.append(pred_output_b)
@@ -150,6 +154,9 @@ class PredictionModelBDNN(PredictionModelNN):
     ##################
 
     def eval(self, input):
+        if not self._graph_setup_eval_called:
+            self._graph_setup_eval()
+
         feed_dict = dict([(input_b, input) for input_b in self.input])
         pred_output = None
         for _ in xrange(self.params['samples']):
@@ -162,7 +169,8 @@ class PredictionModelBDNN(PredictionModelNN):
                 pred_output = np.concatenate((pred_output, pred_output_s), axis=1)
 
         assert(len(pred_output.shape) == 4)
-        assert(pred_output.shape[1] == self.params['bootstrap'] * self.params['samples'] * len(input))
+        assert(pred_output.shape[0] == len(input))
+        assert(pred_output.shape[1] == self.params['bootstrap'] * self.params['samples'])
         assert(pred_output.shape[2] == self.params['H'])
         assert(pred_output.shape[3] == 2)
 
