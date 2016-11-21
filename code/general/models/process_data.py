@@ -169,6 +169,10 @@ class ProcessData(object):
             d = pickle.load(f)
         return d['output']
 
+    @property
+    def homography(self):
+        return np.loadtxt(os.path.join(self.folder, 'H.txt'))
+
     ###############
     ### Parsing ###
     ###############

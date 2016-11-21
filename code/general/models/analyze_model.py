@@ -1,14 +1,14 @@
-import itertools
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import general.utils.colormaps as cmaps
 
 class AnalyzeModel(object):
     """
     Open model, evaluate it, close it
     """
     def __init__(self, prediction_model):
+        self.params = prediction_model.params
         self.prediction_model = prediction_model
         self.prediction_model.load()
         self.train_pedestrians, self.val_pedestrians = self.prediction_model.process_data.load_pedestrians()
@@ -16,7 +16,7 @@ class AnalyzeModel(object):
         self.train_inputs, self.train_outputs, self.train_pred_outputs = \
             AnalyzeModel.get_inputs_outputs_preds(self.prediction_model, self.train_pedestrians)
         self.val_inputs, self.val_outputs, self.val_pred_outputs = \
-            AnalyzeModel.get_inputs_outputs_preds(self.prediction_model, self.train_pedestrians)
+            AnalyzeModel.get_inputs_outputs_preds(self.prediction_model, self.val_pedestrians)
 
         self.prediction_model.close()
 
@@ -30,11 +30,33 @@ class AnalyzeModel(object):
 
     @staticmethod
     def get_inputs_outputs_preds(prediction_model, pedestrians):
-        inputs = np.array(list(itertools.chain(*[p.inputs for p in pedestrians])))
-        pred_outputs = prediction_model.eval(inputs)
-        outputs = np.array(list(itertools.chain(*[p.outputs for p in pedestrians])))
+        inputs = []
+        outputs = []
+        pred_outputs = []
+        for p in pedestrians:
+            if len(p.inputs) == 0:
+                continue
 
-        return inputs, outputs, pred_outputs
+            p.pred_outputs = prediction_model.eval(p.inputs)
+            p.inputs = np.array(p.inputs)
+            p.outputs = np.array(p.outputs)
+
+            inputs += p.inputs.tolist()
+            outputs += p.outputs.tolist()
+            pred_outputs += p.pred_outputs.tolist()
+
+        return np.array(inputs), np.array(outputs), np.array(pred_outputs)
+
+    def get_pedestrian(self, id):
+        for p in self.train_pedestrians + self.val_pedestrians:
+            if p.id == id:
+                return p
+
+        return None
+
+    @property
+    def max_pedestrian_id(self):
+        return max([p.id for p in self.train_pedestrians + self.val_pedestrians])
 
 
 class AnalyzeModels(object):
@@ -48,20 +70,27 @@ class AnalyzeModels(object):
 
     @staticmethod
     def average_displacement_metric(outputs, pred_outputs, average_samples):
+        pred_outputs_avg = pred_outputs.mean(axis=1)
+        num_samples = pred_outputs.shape[1]
+
         if average_samples:
-            pred_outputs_avg = pred_outputs.mean(axis=1)
             dists_mean = np.linalg.norm(outputs - pred_outputs_avg, axis=2).sum(axis=1) # norm each timestep, sum over timesteps
-            dists_std = np.zeros(dists_mean.shape)
+            # dists_std = np.zeros(dists_mean.shape)
         else:
-            num_samples = pred_outputs.shape[1]
             outputs_tiled = np.tile(np.expand_dims(outputs, 1), (1, num_samples, 1, 1))
             dists_mean = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).mean(axis=1) # norm each timestep, sum over timesteps, mean over samples
-            dists_std = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).std(axis=1)
+
+            # dists_std = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).std(axis=1)
+
+        ### std is distance from mean prediction (so no ground truth involved)
+        pred_outputs_avg_tiled = np.tile(np.expand_dims(pred_outputs.mean(axis=1), 1), (1, num_samples, 1, 1))
+        dists_std = np.linalg.norm(pred_outputs - pred_outputs_avg_tiled, axis=3).sum(axis=2).std(axis=1)
 
         return dists_mean, dists_std
 
     @staticmethod
     def final_displacement_metric(outputs, pred_outputs, average_samples):
+        raise Exception('Not correct now')
         if average_samples:
             pred_outputs_avg = pred_outputs.mean(axis=1)
             dists_mean = np.linalg.norm(outputs[:, -1, :] - pred_outputs_avg[:, -1, :], axis=1)
@@ -91,6 +120,120 @@ class AnalyzeModels(object):
     ################
     ### Plotting ###
     ################
+
+    def plot_predictions_on_images(self):
+        ### must have same K and H
+        K = self.analyze_models[0].params['H']
+        H = self.analyze_models[0].params['H']
+        assert(np.all([am.params['K'] == K for am in self.analyze_models]))
+        assert(np.all([am.params['H'] == H for am in self.analyze_models]))
+
+        labels = [am.name for am in self.analyze_models]
+        homography = self.analyze_models[0].prediction_model.process_data.homography
+
+        f, ax = plt.subplots(1, 1)
+        ax_im = None
+        ax_gt_line = None
+        ax_lines = [None] * len(self.analyze_models)
+
+        def perform_homography(hom, x):
+            pred_output = np.hstack((x, np.ones((len(x), 1))))
+            coords = np.linalg.solve(hom, pred_output.T)
+            coords /= coords[-1]
+            coords = coords[:-1].T
+            return coords
+
+        max_id = max([am.max_pedestrian_id for am in self.analyze_models])
+        for id in xrange(max_id):
+            peds = [am.get_pedestrian(id) for am in self.analyze_models]
+            if np.any([p is None for p in peds]):
+                continue
+
+            images = peds[0].images
+            N = len(peds[0].pred_outputs)
+            for n in xrange(N):
+                im = images[n+K]
+                if ax_im is None:
+                    ax_im = ax.imshow(im)
+                    plt.show(block=False)
+                else:
+                    ax_im.set_array(im)
+                    f.canvas.draw()
+                plt.pause(0.01)
+
+                output = np.vstack((np.expand_dims(peds[0].inputs[n][-1], 0), peds[0].outputs[n]))
+                coords = perform_homography(homography, output)
+                if ax_gt_line is None:
+                    ax_gt_line = ax.plot(coords[:, 1], coords[:, 0],
+                                         color='k', label='gt', marker='^', markersize=10, linewidth=3)[0]
+                else:
+                    ax_gt_line.set_xdata(coords[:, 1])
+                    ax_gt_line.set_ydata(coords[:, 0])
+
+                for i, (input, pred_output) in enumerate(zip([p.inputs[n] for p in peds],
+                                                             [p.pred_outputs[n] for p in peds])):
+                    pred_output = pred_output.mean(axis=0) # TODO
+                    pred_output = np.vstack((np.expand_dims(input[-1], 0), pred_output))
+                    coords = perform_homography(homography, pred_output)
+                    color = cmaps.magma((i+1) / float(len(self.analyze_models)+1))
+
+                    if ax_lines[i] is None:
+                        ax_lines[i] = ax.plot(coords[:, 1], coords[:, 0],
+                                              color=color, label=labels[i], marker='^', markersize=10, linewidth=3)[0]
+                        ax.legend()
+                    else:
+                        ax_lines[i].set_xdata(coords[:, 1])
+                        ax_lines[i].set_ydata(coords[:, 0])
+
+                f.canvas.draw()
+                raw_input('Pedestrian {0}: {1}'.format(id, n))
+
+    def plot_accuracy_curve(self, title, displacement_metric, average_samples):
+        f, axes = plt.subplots(2, 1, sharex=True)
+        ax_mean = axes[0]
+        ax_std = axes[1]
+
+        ### get prediction distance error
+        dists_means = []
+        dists_stds = []
+        labels = []
+        for am in self.analyze_models:
+            # inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
+            inputs, outputs, pred_outputs = am.val_inputs, am.val_outputs, am.val_pred_outputs
+            dists_mean, dists_std = displacement_metric(outputs, pred_outputs, average_samples)
+            dists_means.append(dists_mean)
+            dists_stds.append(dists_std)
+            labels.append(am.name)
+
+        for i, (label, dists_mean, dists_std) in enumerate(zip(labels, dists_means, dists_stds)):
+            sort_idxs = np.argsort(dists_mean)
+
+            xs = dists_mean[sort_idxs]
+            ys = np.linspace(0, 100, len(xs))
+            xerrs = dists_std[sort_idxs]
+            color = cmaps.magma(i / float(len(labels)))
+
+            ax_mean.plot(xs, ys, label=label, color=color)
+            # ax_mean.fill_betweenx(ys, xs - xerrs, xs + xerrs, color=color, alpha=0.5)
+
+            ax_std.plot(xs, xerrs, label=label, color=color)
+
+        ### formatting
+        if average_samples:
+            title += ' (averaging samples)'
+        else:
+            title += ' (NOT averaging samples)'
+        f.suptitle(title)
+
+        for ax in axes:
+            ax.set_xlabel('Threshold (meters)')
+            ax.legend()
+
+        ax_mean.set_ylabel('% of correctly predicted trajectories')
+        ax_std.set_ylabel('std of % of correctly predicted trajectories')
+
+        plt.show(block=False)
+        plt.pause(0.05)
 
     def plot_cost_histogram(self, title, displacement_metric, average_samples, num_bins=21):
         f, axes = plt.subplots(2, 1, sharex=True)
@@ -153,10 +296,15 @@ class AnalyzeModels(object):
         plt.pause(0.05)
 
     def run(self):
-        self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, True)
-        self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, True)
-        self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
-        self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
+        # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, True)
+        # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, True)
+        # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
+        # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
+
+        # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, True)
+        # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, False)
+
+        self.plot_predictions_on_images()
 
         raw_input('Press enter to exit')
 
