@@ -89,6 +89,8 @@ class PredictionModelBDNN(PredictionModelNN):
 
         if graph_type == 'fc':
             return OldPredictionModel._graph_inference_fc
+        elif graph_type == 'fc_sub':
+            return OldPredictionModel._graph_inference_fc_sub
         else:
             raise Exception('graph_type {0} is not valid'.format(graph_type))
 
@@ -133,6 +135,55 @@ class PredictionModelBDNN(PredictionModelNN):
                             layer = tf.nn.dropout(layer, keep_prob=dropout)
 
                 pred_output_b = tf.reshape(layer, [-1] + output_shape)
+                pred_output.append(pred_output_b)
+
+        return pred_output
+
+    @staticmethod
+    def _graph_inference_fc_sub(name, input, input_shape, output_shape, params, reuse=False, random_seed=None):
+        tf.set_random_seed(random_seed)
+
+        dropout = params['dropout']
+
+        pred_output = []
+        with tf.name_scope(name + '_inference'):
+
+            for b, input_b in enumerate(input):
+                ### define variables
+                with tf.variable_scope('inference_vars_b{0}'.format(b), reuse=reuse):
+                    weights_b = [
+                        tf.get_variable('w_hidden_0_b{0}'.format(b), [np.prod(input_shape), 40],
+                                        initializer=tf.contrib.layers.xavier_initializer()),
+                        tf.get_variable('w_hidden_1_b{0}'.format(b), [40, 40],
+                                        initializer=tf.contrib.layers.xavier_initializer()),
+                        tf.get_variable('w_output_b{0}'.format(b), [40, np.prod(output_shape)],
+                                        initializer=tf.contrib.layers.xavier_initializer()),
+                    ]
+                    biases_b = [
+                        tf.get_variable('b_hidden_0_b{0}'.format(b), [40], initializer=tf.constant_initializer(0.)),
+                        tf.get_variable('b_hidden_1_b{0}'.format(b), [40], initializer=tf.constant_initializer(0.)),
+                        tf.get_variable('b_output_b{0}'.format(b), [np.prod(output_shape)],
+                                        initializer=tf.constant_initializer(0.)),
+                    ]
+
+                ### weight decays
+                for v in weights_b + biases_b:
+                    tf.add_to_collection('weight_decays', 1.0 * tf.nn.l2_loss(v))
+
+                pos_input_b_0 = tf.expand_dims(input_b[:, 0, :2], 1)
+                input_b = tf.concat(2, (input_b[:, :, :2] - tf.tile(pos_input_b_0, (1, input_shape[0], 1)), input_b[:, :, 2:]))
+
+                ### fully connected relus
+                layer = tf.reshape(input_b, [-1, np.prod(input_shape)])
+                for i, (weight_b, bias_b) in enumerate(zip(weights_b, biases_b)):
+                    with tf.name_scope('hidden_{0}_b{1}'.format(i, b)):
+                        layer = tf.add(tf.matmul(layer, weight_b), bias_b)
+                        if i < len(weights_b) - 1:
+                            layer = tf.nn.relu(layer)
+                        if dropout is not None:
+                            layer = tf.nn.dropout(layer, keep_prob=dropout)
+
+                pred_output_b = tf.reshape(layer, [-1] + output_shape) + tf.tile(pos_input_b_0, (1, output_shape[0], 1))
                 pred_output.append(pred_output_b)
 
         return pred_output

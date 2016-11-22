@@ -213,9 +213,56 @@ class ProcessData(object):
     ### Compute inputs/outputs ###
     ##############################
 
-    @abc.abstractmethod
     def compute_inputs_outputs(self, pedestrians):
-        raise NotImplementedError('Implement in subclass')
+        ### select feature method
+        if self.params['feature_type'] == 'position':
+            add_inputs_outputs = self.add_inputs_outputs_position
+            input_output_shape = self.input_output_shape_position
+        elif self.params['feature_type'] == 'position_velocity':
+            add_inputs_outputs = self.add_inputs_outputs_position_velocity
+            input_output_shape = self.input_output_shape_position_velocity
+        else:
+            raise Exception('Feature type {0} not valid'.format(self.params['feature_type']))
+
+        ### delete previous features
+        for data_file in self.all_data_files:
+            os.remove(data_file)
+
+        ### compute inputs/outputs for each pedestrian
+        add_inputs_outputs(pedestrians)
+
+        ### save input output shape
+        with open(self.input_output_shape_file, 'w') as f:
+            pickle.dump(input_output_shape, f)
+
+    @property
+    def input_output_shape_position(self):
+        return {
+            'input': [self.params['K'], 2],
+            'output': [self.params['H'], 2]
+        }
+    def add_inputs_outputs_position(self, pedestrians):
+        for ped in pedestrians:
+            for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
+                input = ped.positions[start - self.params['K'] + 1:start + 1]
+                output = ped.positions[start + 1:start + self.params['H'] + 1]
+
+                ped.add_input_output(input, output)
+
+    @property
+    def input_output_shape_position_velocity(self):
+        return {
+            'input': [self.params['K'], 4],
+            'output': [self.params['H'], 2]
+        }
+    def add_inputs_outputs_position_velocity(self, pedestrians):
+        for ped in pedestrians:
+            for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
+                input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
+                                   ped.velocities[start - self.params['K'] + 1:start + 1]))
+                output = ped.positions[start + 1:start + self.params['H'] + 1]
+
+                ped.add_input_output(input, output)
 
     #################
     ### Save data ###
@@ -245,4 +292,5 @@ class ProcessData(object):
     def process(self):
         pedestrians = self.parse_pedestrians()
         self.compute_inputs_outputs(pedestrians)
-        self.save_pedestrians(pedestrians)
+        train_pedestrians, val_pedestrians = self.save_pedestrians(pedestrians)
+        return train_pedestrians, val_pedestrians

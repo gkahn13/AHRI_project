@@ -170,7 +170,6 @@ class PredictionModelNN(PredictionModel):
 
         return pred_output
 
-
     def _graph_cost(self, name, pred_output, output):
         with tf.name_scope(name + '_cost_and_err'):
             cost = tf.reduce_mean((pred_output - output) * (pred_output - output))

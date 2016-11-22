@@ -204,8 +204,8 @@ class AnalyzeModels(object):
         dists_stds = []
         labels = []
         for am in self.analyze_models:
-            # inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
-            inputs, outputs, pred_outputs = am.val_inputs, am.val_outputs, am.val_pred_outputs
+            inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
+            # inputs, outputs, pred_outputs = am.val_inputs, am.val_outputs, am.val_pred_outputs
             dists_mean, dists_std = displacement_metric(outputs, pred_outputs, average_samples)
             dists_means.append(dists_mean)
             dists_stds.append(dists_std)

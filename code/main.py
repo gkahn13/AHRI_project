@@ -10,6 +10,7 @@ from general.models.analyze_model import AnalyzeModels
 
 from models.nn.prediction_model_nn import PredictionModelNN
 from models.bd_nn.prediction_model_bd_nn import PredictionModelBDNN
+from models.gp.prediction_model_gp import PredictionModelGP
 
 DATA_FOLDER = '/home/gkahn/code/AHRI_project/data/seq_hotel'
 EXP_PARENT_FOLDER = '/home/gkahn/code/AHRI_project/exps/'
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     parser_analyze.set_defaults(run='analyze')
 
     ### parser train
-    parser_train.add_argument('model', type=str, choices=('nn', 'bd_nn'))
+    parser_train.add_argument('model', type=str, choices=('nn', 'bd_nn', 'gp'))
 
     ### parser analyze
     parser_analyze.add_argument('exps', nargs='+')
@@ -67,6 +68,8 @@ if __name__ == '__main__':
             prediction_model = PredictionModelNN(exp_folder, DATA_FOLDER, params)
         elif model == 'bd_nn':
             prediction_model = PredictionModelBDNN(exp_folder, DATA_FOLDER, params)
+        elif model == 'gp':
+            prediction_model = PredictionModelGP(exp_folder, DATA_FOLDER, params)
 
         prediction_model.train()
     elif run == 'analyze':
