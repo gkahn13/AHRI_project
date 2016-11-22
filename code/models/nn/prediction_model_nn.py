@@ -85,6 +85,8 @@ class PredictionModelNN(PredictionModel):
 
         if graph_type == 'fc':
             return OldPredictionModel._graph_inference_fc
+        elif graph_type == 'fc_sub':
+            return OldPredictionModel._graph_inference_fc_sub
         else:
             raise Exception('graph_type {0} is not valid'.format(graph_type))
 
@@ -125,6 +127,49 @@ class PredictionModelNN(PredictionModel):
             pred_output = tf.reshape(layer, [-1] + output_shape)
 
         return pred_output
+
+    @staticmethod
+    def _graph_inference_fc_sub(name, input, input_shape, output_shape, params, reuse=False, random_seed=None):
+        tf.set_random_seed(random_seed)
+        assert(output_shape[1] == 2)
+
+        pos_input_0 = tf.expand_dims(input[:, 0, :2], 1)
+        input = tf.concat(2, (input[:, :, :2] - tf.tile(pos_input_0, (1, input_shape[0], 1)), input[:, :, 2:]))
+
+        with tf.name_scope(name + '_inference'):
+
+            ### define variables
+            with tf.variable_scope('inference_vars', reuse=reuse):
+                weights = [
+                    tf.get_variable('w_hidden_0', [np.prod(input_shape), 40],
+                                    initializer=tf.contrib.layers.xavier_initializer()),
+                    tf.get_variable('w_hidden_1', [40, 40],
+                                    initializer=tf.contrib.layers.xavier_initializer()),
+                    tf.get_variable('w_output', [40, np.prod(output_shape)],
+                                    initializer=tf.contrib.layers.xavier_initializer()),
+                ]
+                biases = [
+                    tf.get_variable('b_hidden_0', [40], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_hidden_1', [40], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_output', [np.prod(output_shape)], initializer=tf.constant_initializer(0.)),
+                ]
+
+            ### weight decays
+            for v in weights + biases:
+                tf.add_to_collection('weight_decays', 1.0 * tf.nn.l2_loss(v))
+
+            ### fully connected relus
+            layer = tf.reshape(input, [-1, np.prod(input_shape)])
+            for i, (weight, bias) in enumerate(zip(weights, biases)):
+                with tf.name_scope('hidden_{0}'.format(i)):
+                    layer = tf.add(tf.matmul(layer, weight), bias)
+                    if i < len(weights) - 1:
+                        layer = tf.nn.relu(layer)
+
+            pred_output = tf.reshape(layer, [-1] + output_shape) + tf.tile(pos_input_0, (1, output_shape[0], 1))
+
+        return pred_output
+
 
     def _graph_cost(self, name, pred_output, output):
         with tf.name_scope(name + '_cost_and_err'):

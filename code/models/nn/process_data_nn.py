@@ -32,6 +32,9 @@ class ProcessDataNN(ProcessData):
         if self.params['feature_type'] == 'position':
             add_inputs_outputs = self.add_inputs_outputs_position
             input_output_shape = self.input_output_shape_position
+        elif self.params['feature_type'] == 'position_velocity':
+            add_inputs_outputs = self.add_inputs_outputs_position_velocity
+            input_output_shape = self.input_output_shape_position_velocity
         else:
             raise Exception('Feature type {0} not valid'.format(self.params['feature_type']))
 
@@ -56,6 +59,21 @@ class ProcessDataNN(ProcessData):
         for ped in pedestrians:
             for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
                 input = ped.positions[start - self.params['K'] + 1:start + 1]
+                output = ped.positions[start + 1:start + self.params['H'] + 1]
+
+                ped.add_input_output(input, output)
+
+    @property
+    def input_output_shape_position_velocity(self):
+        return {
+            'input': [self.params['K'], 4],
+            'output': [self.params['H'], 2]
+        }
+    def add_inputs_outputs_position_velocity(self, pedestrians):
+        for ped in pedestrians:
+            for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
+                input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
+                                   ped.velocities[start - self.params['K'] + 1:start + 1]))
                 output = ped.positions[start + 1:start + self.params['H'] + 1]
 
                 ped.add_input_output(input, output)

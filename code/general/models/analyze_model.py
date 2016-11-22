@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib
+matplotlib.rcParams.update({'font.size': 22})
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import general.utils.colormaps as cmaps
@@ -74,13 +76,10 @@ class AnalyzeModels(object):
         num_samples = pred_outputs.shape[1]
 
         if average_samples:
-            dists_mean = np.linalg.norm(outputs - pred_outputs_avg, axis=2).sum(axis=1) # norm each timestep, sum over timesteps
-            # dists_std = np.zeros(dists_mean.shape)
+            dists_mean = np.linalg.norm(outputs - pred_outputs_avg, axis=2).mean(axis=1) # norm each timestep, mean over timesteps
         else:
             outputs_tiled = np.tile(np.expand_dims(outputs, 1), (1, num_samples, 1, 1))
-            dists_mean = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).mean(axis=1) # norm each timestep, sum over timesteps, mean over samples
-
-            # dists_std = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).sum(axis=2).std(axis=1)
+            dists_mean = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).mean(axis=2).mean(axis=1) # norm each timestep, mean over timesteps, mean over samples
 
         ### std is distance from mean prediction (so no ground truth involved)
         pred_outputs_avg_tiled = np.tile(np.expand_dims(pred_outputs.mean(axis=1), 1), (1, num_samples, 1, 1))
@@ -123,7 +122,7 @@ class AnalyzeModels(object):
 
     def plot_predictions_on_images(self):
         ### must have same K and H
-        K = self.analyze_models[0].params['H']
+        K = self.analyze_models[0].params['K']
         H = self.analyze_models[0].params['H']
         assert(np.all([am.params['K'] == K for am in self.analyze_models]))
         assert(np.all([am.params['H'] == H for am in self.analyze_models]))
@@ -133,8 +132,6 @@ class AnalyzeModels(object):
 
         f, ax = plt.subplots(1, 1)
         ax_im = None
-        ax_gt_line = None
-        ax_lines = [None] * len(self.analyze_models)
 
         def perform_homography(hom, x):
             pred_output = np.hstack((x, np.ones((len(x), 1))))
@@ -143,10 +140,19 @@ class AnalyzeModels(object):
             coords = coords[:-1].T
             return coords
 
+        plot_dict = {}
+        def plot_memoized(key, ax, x, y, **kwargs):
+            if key in plot_dict.keys():
+                plot_dict[key].set_xdata(x)
+                plot_dict[key].set_ydata(y)
+            else:
+                plot_dict[key] = ax.plot(x, y, **kwargs)[0]
+                ax.legend()
+
         max_id = max([am.max_pedestrian_id for am in self.analyze_models])
         for id in xrange(max_id):
             peds = [am.get_pedestrian(id) for am in self.analyze_models]
-            if np.any([p is None for p in peds]):
+            if np.any([p is None or not hasattr(p, 'pred_outputs') for p in peds]):
                 continue
 
             images = peds[0].images
@@ -163,30 +169,30 @@ class AnalyzeModels(object):
 
                 output = np.vstack((np.expand_dims(peds[0].inputs[n][-1], 0), peds[0].outputs[n]))
                 coords = perform_homography(homography, output)
-                if ax_gt_line is None:
-                    ax_gt_line = ax.plot(coords[:, 1], coords[:, 0],
-                                         color='k', label='gt', marker='^', markersize=10, linewidth=3)[0]
-                else:
-                    ax_gt_line.set_xdata(coords[:, 1])
-                    ax_gt_line.set_ydata(coords[:, 0])
+                plot_memoized('gt', ax, coords[:, 1], coords[:, 0],
+                              color='k', label='gt', marker='^', markersize=10, linewidth=3)
 
                 for i, (input, pred_output) in enumerate(zip([p.inputs[n] for p in peds],
                                                              [p.pred_outputs[n] for p in peds])):
-                    pred_output = pred_output.mean(axis=0) # TODO
-                    pred_output = np.vstack((np.expand_dims(input[-1], 0), pred_output))
-                    coords = perform_homography(homography, pred_output)
-                    color = cmaps.magma((i+1) / float(len(self.analyze_models)+1))
+                    color = cmaps.magma((i + 1) / float(len(self.analyze_models) + 1))
 
-                    if ax_lines[i] is None:
-                        ax_lines[i] = ax.plot(coords[:, 1], coords[:, 0],
-                                              color=color, label=labels[i], marker='^', markersize=10, linewidth=3)[0]
-                        ax.legend()
-                    else:
-                        ax_lines[i].set_xdata(coords[:, 1])
-                        ax_lines[i].set_ydata(coords[:, 0])
+                    for j, pred_output_j in enumerate(pred_output):
+                        pred_output_j = np.vstack((np.expand_dims(input[-1], 0), pred_output_j))
+                        coords = perform_homography(homography, pred_output_j)
+                        plot_memoized('sample_{0}_{1}'.format(i, j), ax, coords[:, 1], coords[:, 0],
+                                      color=color, linestyle='--', linewidth=2)
+
+                    pred_output_mean = pred_output.mean(axis=0)
+                    pred_output_mean = np.vstack((np.expand_dims(input[-1], 0), pred_output_mean))
+                    coords = perform_homography(homography, pred_output_mean)
+                    plot_memoized('mean_{0}'.format(i), ax, coords[:, 1], coords[:, 0],
+                                  color=color, label=labels[i], marker='^', markersize=10, linewidth=3)
+
 
                 f.canvas.draw()
-                raw_input('Pedestrian {0}: {1}'.format(id, n))
+                read = raw_input('Pedestrian {0}: {1}'.format(id, n))
+                if read == 'b':
+                    break
 
     def plot_accuracy_curve(self, title, displacement_metric, average_samples):
         f, axes = plt.subplots(2, 1, sharex=True)
@@ -213,10 +219,10 @@ class AnalyzeModels(object):
             xerrs = dists_std[sort_idxs]
             color = cmaps.magma(i / float(len(labels)))
 
-            ax_mean.plot(xs, ys, label=label, color=color)
+            ax_mean.plot(xs, ys, label=label, color=color, linewidth=5)
             # ax_mean.fill_betweenx(ys, xs - xerrs, xs + xerrs, color=color, alpha=0.5)
 
-            ax_std.plot(xs, xerrs, label=label, color=color)
+            ax_std.plot(xs, xerrs, label=label, color=color, linewidth=5)
 
         ### formatting
         if average_samples:
@@ -301,10 +307,10 @@ class AnalyzeModels(object):
         # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
         # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
 
-        # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, True)
+        self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, True)
         # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, False)
 
-        self.plot_predictions_on_images()
+        # self.plot_predictions_on_images()
 
         raw_input('Press enter to exit')
 

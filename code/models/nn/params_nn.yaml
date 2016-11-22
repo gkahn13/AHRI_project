@@ -2,17 +2,17 @@
 ### Common parameters ###
 #########################
 
-exp: exp0
+exp: exp3
 random_seed: 1
 
-K: 2 # number previous timesteps to take in (i.e. 1 means only current)
-H: 2 # number future timesteps to predict
+K: 3 # number previous timesteps to take in (i.e. 1 means only current)
+H: 4 # number future timesteps to predict
 
 ##############################
 ### NN specific parameters ###
 ##############################
 
-feature_type: 'position'
+feature_type: 'position_velocity'
 features_per_file: 32
 
 graph_type: 'fc'
