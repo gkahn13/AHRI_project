@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import matplotlib
 matplotlib.rcParams.update({'font.size': 22})
@@ -32,22 +34,22 @@ class AnalyzeModel(object):
 
     @staticmethod
     def get_inputs_outputs_preds(prediction_model, pedestrians):
-        inputs = []
-        outputs = []
-        pred_outputs = []
-        for p in pedestrians:
-            if len(p.inputs) == 0:
+        inputs = np.array(list(itertools.chain(*[p.inputs for p in pedestrians])))
+        outputs = np.array(list(itertools.chain(*[p.outputs for p in pedestrians])))
+        pred_outputs = prediction_model.eval(inputs)
+
+        ped_idxs = np.hstack([[i] * len(p.inputs) for i, p in enumerate(pedestrians)])
+
+        for i, ped in enumerate(pedestrians):
+            mask = (ped_idxs == i)
+            if np.sum(mask) == 0:
                 continue
 
-            p.pred_outputs = prediction_model.eval(p.inputs)
-            p.inputs = np.array(p.inputs)
-            p.outputs = np.array(p.outputs)
+            ped.inputs = inputs[mask]
+            ped.outputs = outputs[mask]
+            ped.pred_outputs = pred_outputs[mask]
 
-            inputs += p.inputs.tolist()
-            outputs += p.outputs.tolist()
-            pred_outputs += p.pred_outputs.tolist()
-
-        return np.array(inputs), np.array(outputs), np.array(pred_outputs)
+        return inputs, outputs, pred_outputs
 
     def get_pedestrian(self, id):
         for p in self.train_pedestrians + self.val_pedestrians:
@@ -82,8 +84,10 @@ class AnalyzeModels(object):
             dists_mean = np.linalg.norm(outputs_tiled - pred_outputs, axis=3).mean(axis=2).mean(axis=1) # norm each timestep, mean over timesteps, mean over samples
 
         ### std is distance from mean prediction (so no ground truth involved)
-        pred_outputs_avg_tiled = np.tile(np.expand_dims(pred_outputs.mean(axis=1), 1), (1, num_samples, 1, 1))
-        dists_std = np.linalg.norm(pred_outputs - pred_outputs_avg_tiled, axis=3).sum(axis=2).std(axis=1)
+        # pred_outputs_avg_tiled = np.tile(np.expand_dims(pred_outputs.mean(axis=1), 1), (1, num_samples, 1, 1))
+        # dists_std = np.linalg.norm(pred_outputs - pred_outputs_avg_tiled, axis=3).sum(axis=2).std(axis=1)
+
+        dists_std = pred_outputs.std(axis=1).sum(axis=2).mean(axis=1)
 
         return dists_mean, dists_std
 
@@ -149,8 +153,15 @@ class AnalyzeModels(object):
                 plot_dict[key] = ax.plot(x, y, **kwargs)[0]
                 ax.legend()
 
-        max_id = max([am.max_pedestrian_id for am in self.analyze_models])
-        for id in xrange(max_id):
+        ### choose which ids to look at
+        all_ids = range(max([am.max_pedestrian_id for am in self.analyze_models]))
+        train_ids = np.array([sorted([p.id for p in am.train_pedestrians]) for am in self.analyze_models])
+        val_ids = np.array([sorted([p.id for p in am.val_pedestrians]) for am in self.analyze_models])
+        assert(train_ids.std(axis=0).max() == 0)
+        assert(val_ids.std(axis=0).max() == 0)
+        ids = val_ids[0]
+
+        for id in ids:
             peds = [am.get_pedestrian(id) for am in self.analyze_models]
             if np.any([p is None or not hasattr(p, 'pred_outputs') for p in peds]):
                 continue
@@ -167,7 +178,7 @@ class AnalyzeModels(object):
                     f.canvas.draw()
                 plt.pause(0.01)
 
-                output = np.vstack((np.expand_dims(peds[0].inputs[n][-1], 0), peds[0].outputs[n]))
+                output = np.vstack((np.expand_dims(peds[0].inputs[n][-1,:2], 0), peds[0].outputs[n])) # TODO assumes first 2 inputs position
                 coords = perform_homography(homography, output)
                 plot_memoized('gt', ax, coords[:, 1], coords[:, 0],
                               color='k', label='gt', marker='^', markersize=10, linewidth=3)
@@ -177,13 +188,13 @@ class AnalyzeModels(object):
                     color = cmaps.magma((i + 1) / float(len(self.analyze_models) + 1))
 
                     for j, pred_output_j in enumerate(pred_output):
-                        pred_output_j = np.vstack((np.expand_dims(input[-1], 0), pred_output_j))
+                        pred_output_j = np.vstack((np.expand_dims(input[-1,:2], 0), pred_output_j))
                         coords = perform_homography(homography, pred_output_j)
                         plot_memoized('sample_{0}_{1}'.format(i, j), ax, coords[:, 1], coords[:, 0],
                                       color=color, linestyle='--', linewidth=2)
 
                     pred_output_mean = pred_output.mean(axis=0)
-                    pred_output_mean = np.vstack((np.expand_dims(input[-1], 0), pred_output_mean))
+                    pred_output_mean = np.vstack((np.expand_dims(input[-1,:2], 0), pred_output_mean))
                     coords = perform_homography(homography, pred_output_mean)
                     plot_memoized('mean_{0}'.format(i), ax, coords[:, 1], coords[:, 0],
                                   color=color, label=labels[i], marker='^', markersize=10, linewidth=3)
@@ -204,8 +215,8 @@ class AnalyzeModels(object):
         dists_stds = []
         labels = []
         for am in self.analyze_models:
-            inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
-            # inputs, outputs, pred_outputs = am.val_inputs, am.val_outputs, am.val_pred_outputs
+            # inputs, outputs, pred_outputs = am.train_inputs, am.train_outputs, am.train_pred_outputs
+            inputs, outputs, pred_outputs = am.val_inputs, am.val_outputs, am.val_pred_outputs
             dists_mean, dists_std = displacement_metric(outputs, pred_outputs, average_samples)
             dists_means.append(dists_mean)
             dists_stds.append(dists_std)
@@ -222,7 +233,7 @@ class AnalyzeModels(object):
             ax_mean.plot(xs, ys, label=label, color=color, linewidth=5)
             # ax_mean.fill_betweenx(ys, xs - xerrs, xs + xerrs, color=color, alpha=0.5)
 
-            ax_std.plot(xs, xerrs, label=label, color=color, linewidth=5)
+            ax_std.plot(xs, xerrs, 'o', label=label, color=color, linewidth=5)
 
         ### formatting
         if average_samples:

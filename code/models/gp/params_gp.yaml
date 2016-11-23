@@ -2,18 +2,23 @@
 ### Common parameters ###
 #########################
 
-exp: exp0
+exp: exp3
 random_seed: 1
 
 K: 3 # number previous timesteps to take in (i.e. 1 means only current)
-H: 4 # number future timesteps to predict
+H: 8 # number future timesteps to predict
 
 ##############################
-### NN specific parameters ###
+### GP specific parameters ###
 ##############################
 
-feature_type: 'position'
+feature_type: 'position_velocity'
+process_type:
 
+training_samples: 1000 # number of training samples
+std_max:
+
+method:
 device: 1
 gpu_fraction: 0.4
 
