@@ -2,7 +2,7 @@
 ### Common parameters ###
 #########################
 
-exp: exp3
+exp: exp0
 random_seed: 1
 
 K: 3 # number previous timesteps to take in (i.e. 1 means only current)
@@ -13,11 +13,13 @@ H: 4 # number future timesteps to predict
 ##############################
 
 feature_type: 'position_velocity'
+graph_type: 'fc' # fc /
+kernel_size: 4
 
 training_samples: 1000 # number of training samples
 std_max:
 
-opt:  # None / adam
+opt: adam # None / adam
 learning_rate: 0.01 # only for opt adam
 device: 1
 gpu_fraction: 0.4

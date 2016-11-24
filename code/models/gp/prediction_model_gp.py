@@ -31,52 +31,13 @@ class PredictionModelGP(PredictionModel):
     ### Model ###
     #############
 
-    def preprocess(self, inputs, outputs):
-        inputs = np.copy(inputs)
-        outputs = np.copy(outputs) if outputs is not None else outputs
-
-        assert(len(inputs.shape) == 3)
-        assert(outputs is None or len(outputs.shape) == 3)
-
-        if self.params['process_type'] is None:
-            pass
-        elif self.params['process_type'] == 'sub':
-            pos_0 = inputs[:, 0, :2]
-            inputs[:, :, :2] -= pos_0[:, np.newaxis, :]
-            if outputs is not None:
-                outputs[:, :, :2] -= pos_0[:, np.newaxis, :]
-        else:
-            raise Exception('Process type {0} not valid'.format(self.params['process_type']))
-
-        return inputs, outputs
-
-    def postprocess(self, inputs, proc_pred_outputs):
-        inputs = np.copy(inputs)
-        pred_outputs = np.copy(proc_pred_outputs)
-
-        assert(len(inputs.shape) == 3)
-        assert(len(pred_outputs.shape) == 4)
-
-        if self.params['process_type'] is None:
-            pred_outputs = proc_pred_outputs
-        elif self.params['process_type'] == 'sub':
-            pos_0 = inputs[:, 0, :2]
-            pred_outputs[:, :, :, :2] += pos_0[:, np.newaxis, np.newaxis, :]
-        else:
-            raise Exception('Process type {0} not valid'.format(self.params['process_type']))
-
-        return pred_outputs
-
-    def get_inputs_outputs(self, is_train, preprocess, reshape):
+    def get_inputs_outputs(self, is_train, reshape):
         train_pedestrians, val_pedestrians = self.process_data.load_pedestrians()
         pedestrians = train_pedestrians if is_train else val_pedestrians
 
         inputs = np.array(list(itertools.chain(*[p.inputs for p in pedestrians])))
         outputs = np.array(list(itertools.chain(*[p.outputs for p in pedestrians])))
         N = len(inputs)
-
-        if preprocess:
-            inputs, outputs = self.preprocess(inputs, outputs)
 
         if reshape:
             input_dim = np.prod(self.process_data.input_shape)
@@ -109,22 +70,22 @@ class PredictionModelGP(PredictionModel):
     def train(self):
         self.logger.info('Creating model...')
         self.process_data.process()
-        train_inputs, train_outputs = self.get_inputs_outputs(is_train=True, preprocess=True, reshape=True)
+        train_inputs, train_outputs = self.get_inputs_outputs(is_train=True, reshape=True)
         if self.params['training_samples']:
             train_inputs = train_inputs[:self.params['training_samples']]
             train_outputs = train_outputs[:self.params['training_samples']]
         self.create_model(train_inputs, train_outputs)
 
         self.logger.info('Optimizing model...')
-        if self.params['method'] is None:
+        if self.params['opt'] is None:
             method = 'L-BFGS-B'
-        elif self.params['method'] == 'adam':
-            method = tf.train.AdamOptimizer(learning_rate=0.1)
+        elif self.params['opt'] == 'adam':
+            method = tf.train.AdamOptimizer(learning_rate=self.params['learning_rate'])
         self.gp_model.optimize(method=method)
 
         self.logger.info('Evaluating model...')
-        train_inputs, train_outputs = self.get_inputs_outputs(is_train=True, preprocess=False, reshape=False)
-        val_inputs, val_outputs = self.get_inputs_outputs(is_train=False, preprocess=False, reshape=False)
+        train_inputs, train_outputs = self.get_inputs_outputs(is_train=True,  reshape=False)
+        val_inputs, val_outputs = self.get_inputs_outputs(is_train=False, reshape=False)
 
         train_pred_outputs = self.eval(train_inputs).mean(axis=1)
         val_pred_outputs = self.eval(val_inputs).mean(axis=1)
@@ -145,17 +106,13 @@ class PredictionModelGP(PredictionModel):
         """
         :return np.array [batch_size, num_sample, H, 2]
         """
-        proc_input, _ = self.preprocess(input, None)
-
-        mean, std = self.gp_model.predict_f(np.reshape(proc_input, (len(proc_input), np.prod(self.process_data.input_shape))))
+        mean, std = self.gp_model.predict_f(np.reshape(input, (len(input), np.prod(self.process_data.input_shape))))
 
         if self.params['std_max'] is not None:
             std *= self.params['std_max'] / std.max()
 
-        proc_pred_output = np.concatenate(((mean + std)[:, np.newaxis, :], (mean - std)[:, np.newaxis, :]), axis=1)
-        proc_pred_output = proc_pred_output.reshape([len(input), 2] + self.process_data.output_shape)
-
-        pred_output = self.postprocess(input, proc_pred_output)
+        pred_output = np.concatenate(((mean + std)[:, np.newaxis, :], (mean - std)[:, np.newaxis, :]), axis=1)
+        pred_output = pred_output.reshape([len(input), 2] + self.process_data.output_shape)
 
         return pred_output
 

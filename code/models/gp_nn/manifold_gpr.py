@@ -16,7 +16,7 @@ class ManifoldGPR(GPflow.model.GPModel):
     .. math::
        \\log p(\\mathbf y \\,|\\, \\mathbf f) = \\mathcal N\\left(\\mathbf y\,|\, 0, \\mathbf K + \\sigma_n \\mathbf I\\right)
     """
-    def __init__(self, X, Y, kern, mean_function=GPflow.mean_functions.Zero()):
+    def __init__(self, X, Y, kern, mean_function=GPflow.mean_functions.Zero(), graph_type='fc'):
         """
         X is a data matrix, size N x D
         Y is a data matrix, size N x R
@@ -28,19 +28,17 @@ class ManifoldGPR(GPflow.model.GPModel):
         GPflow.model.GPModel.__init__(self, X, Y, kern, likelihood, mean_function)
         self.num_latent = Y.shape[1]
 
+        if graph_type == 'fc':
+            self._graph_create_params = self._graph_create_params
+            self._graph_inference = self._graph_inference_fc
+        else:
+            raise NotImplementedError('Graph type {0} not valid'.format(graph_type))
+
         self._graph_create_params()
 
     #####################
     ### Graph methods ###
     #####################
-
-    def _graph_create_params(self):
-        self.weights0 = GPflow.param.Param(init_xavier((self.X.shape[1], 5)))
-        self.weights1 = GPflow.param.Param(init_xavier((5, self.kern.input_dim)))
-        # self.biases0 = GPflow.param.Param(np.zeros((5,)))
-        # self.biases1 = GPflow.param.Param(np.zeros((self.kern.input_dim,)))
-        self.biases0 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones(5,)))
-        self.biases1 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones((self.kern.input_dim,))))
 
     def _graph_get_params(self, name):
         """
@@ -60,8 +58,14 @@ class ManifoldGPR(GPflow.model.GPModel):
 
         return params
 
+    def _graph_create_params_fc(self):
+        self.weights0 = GPflow.param.Param(init_xavier((self.X.shape[1], 5)))
+        self.weights1 = GPflow.param.Param(init_xavier((5, self.kern.input_dim)))
+        self.biases0 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones(5,)))
+        self.biases1 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones((self.kern.input_dim,))))
+
     # @GPflow.param.AutoFlow(tf.float64)
-    def _graph_inference(self, x):
+    def _graph_inference_fc(self, x):
         weights = self._graph_get_params('weights')
         biases = self._graph_get_params('biases')
 
@@ -82,8 +86,6 @@ class ManifoldGPR(GPflow.model.GPModel):
         Construct a tensorflow function to compute the likelihood.
             \log p(Y | theta).
         """
-        print('############### Building likelihood')
-
         X = self._graph_inference(self.X)
         K = self.kern.K(X) + GPflow.tf_wraps.eye(tf.shape(X)[0]) * self.likelihood.variance
         L = tf.cholesky(K)
@@ -98,7 +100,6 @@ class ManifoldGPR(GPflow.model.GPModel):
             p(F* | Y )
         where F* are points on the GP at Xnew, Y are noisy observations at X.
         """
-        print('############### Building predict')
         X = self._graph_inference(self.X)
         Xnew = self._graph_inference(Xnew)
 
@@ -143,14 +144,14 @@ if __name__ == '__main__':
     kern_mgpr = GPflow.kernels.Matern52(2, lengthscales=0.3, ARD=False)
     mgpr = ManifoldGPR(X, Y, kern_mgpr, mean_function_mgpr)
 
-    for model in (gpr, mgpr):
+    for model in (mgpr,):
         model.likelihood.variance = 0.1
 
         param_values_before = [(p.name, p.value) for p in model.sorted_params if hasattr(p, 'value')]
         mean, std = model.predict_f(X)
         err_before = np.linalg.norm(Y - mean, axis=1).mean()
 
-        model.optimize(method=tf.train.AdamOptimizer(learning_rate=0.001), maxiter=50000)
+        model.optimize(method=tf.train.AdamOptimizer(learning_rate=0.001), maxiter=5000)
         # gpr.optimize()
 
         param_values_after = [(p.name, p.value) for p in model.sorted_params if hasattr(p, 'value')]
