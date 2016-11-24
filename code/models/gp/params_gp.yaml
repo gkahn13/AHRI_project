@@ -18,7 +18,7 @@ process_type:
 training_samples: 1000 # number of training samples
 std_max:
 
-method:
+method: # None / adam
 device: 1
 gpu_fraction: 0.4
 
