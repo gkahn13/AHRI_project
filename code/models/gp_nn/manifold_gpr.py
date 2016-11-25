@@ -29,7 +29,7 @@ class ManifoldGPR(GPflow.model.GPModel):
         self.num_latent = Y.shape[1]
 
         if graph_type == 'fc':
-            self._graph_create_params = self._graph_create_params
+            self._graph_create_params = self._graph_create_params_fc
             self._graph_inference = self._graph_inference_fc
         else:
             raise NotImplementedError('Graph type {0} not valid'.format(graph_type))

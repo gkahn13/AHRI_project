@@ -81,7 +81,7 @@ class PredictionModelGP(PredictionModel):
             method = 'L-BFGS-B'
         elif self.params['opt'] == 'adam':
             method = tf.train.AdamOptimizer(learning_rate=self.params['learning_rate'])
-        self.gp_model.optimize(method=method)
+        self.gp_model.optimize(method=method, maxiter=self.params['maxiter'])
 
         self.logger.info('Evaluating model...')
         train_inputs, train_outputs = self.get_inputs_outputs(is_train=True,  reshape=False)

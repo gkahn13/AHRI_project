@@ -17,8 +17,9 @@ feature_type: 'position_velocity'
 training_samples: 1000 # number of training samples
 std_max:
 
-opt:  # None / adam
-learning_rate: 0.01 # only for opt adam
+opt: adam # None / adam
+learning_rate: 0.1 # only for opt adam
+maxiter: 1000
 device: 1
 gpu_fraction: 0.4
 
