@@ -1,19 +1,17 @@
-import os, pickle
-import itertools
+import os, pickle, itertools
 
 import numpy as np
-import tensorflow as tf
-import GPflow
-
-from models.gp.process_data_gp import ProcessDataGP
 
 from general.models.prediction_model import PredictionModel
+from models.lr.process_data_lr import ProcessDataLR
 
-class PredictionModelGP(PredictionModel):
+class PredictionModelLR(PredictionModel):
 
     def __init__(self, exp_folder, data_folder, params):
-        self.process_data = ProcessDataGP(data_folder, params)
+        self.process_data = ProcessDataLR(data_folder, params)
         PredictionModel.__init__(self, exp_folder, data_folder, params)
+
+        self.w = None
 
     #############
     ### Files ###
@@ -27,9 +25,9 @@ class PredictionModelGP(PredictionModel):
     def _model_file(self):
         return os.path.join(self.exp_folder, 'model.pkl')
 
-    #############
-    ### Model ###
-    #############
+    ################
+    ### Training ###
+    ################
 
     def get_inputs_outputs(self, is_train, reshape):
         train_pedestrians, val_pedestrians = self.process_data.load_pedestrians()
@@ -52,38 +50,13 @@ class PredictionModelGP(PredictionModel):
 
         return inputs, outputs
 
-    def create_model(self, inputs, outputs):
-        # inputs, outputs = inputs[:100], outputs[:100]
-        inputs = np.reshape(inputs, (len(inputs), np.prod(self.process_data.input_shape)))
-        outputs = np.reshape(outputs, (len(outputs), np.prod(self.process_data.output_shape)))
-
-        kernel = GPflow.kernels.Matern52(inputs.shape[1], lengthscales=0.3, ARD=False)
-        A = 0.01 * np.ones((inputs.shape[1], outputs.shape[1]))
-        b = np.zeros(outputs.shape[1])
-        mean_function = GPflow.mean_functions.Linear(A=A, b=b)
-
-        self.gp_model = GPflow.gpr.GPR(inputs, outputs, kern=kernel, mean_function=mean_function)
-        self.gp_model.likelihood.variance = 0.1
-
-    ################
-    ### Training ###
-    ################
-
     def train(self):
-        self.logger.info('Creating model...')
+        self.logger.info('Processing data...')
         self.process_data.process()
-        train_inputs, train_outputs = self.get_inputs_outputs(is_train=True, reshape=True)
-        if self.params['training_samples']:
-            train_inputs = train_inputs[:self.params['training_samples']]
-            train_outputs = train_outputs[:self.params['training_samples']]
-        self.create_model(train_inputs, train_outputs)
+        X, Y = self.get_inputs_outputs(is_train=True, reshape=True)
 
         self.logger.info('Optimizing model...')
-        if self.params['opt'] is None:
-            method = 'L-BFGS-B'
-        elif self.params['opt'] == 'adam':
-            method = tf.train.AdamOptimizer(learning_rate=self.params['learning_rate'])
-        self.gp_model.optimize(method=method, maxiter=self.params['maxiter'])
+        self.w = np.linalg.lstsq(X, Y)[0]
 
         self.logger.info('Evaluating model...')
         train_inputs, train_outputs = self.get_inputs_outputs(is_train=True,  reshape=False)
@@ -108,13 +81,12 @@ class PredictionModelGP(PredictionModel):
         """
         :return np.array [batch_size, num_sample, H, 2]
         """
-        mean, std = self.gp_model.predict_f(np.reshape(input, (len(input), np.prod(self.process_data.input_shape))))
+        input = np.reshape(input, (len(input), np.prod(self.process_data.input_shape)))
 
-        if self.params['std_max'] is not None:
-            std *= self.params['std_max'] / std.max()
+        pred_output = input.dot(self.w)
 
-        pred_output = np.concatenate(((mean + std)[:, np.newaxis, :], (mean - std)[:, np.newaxis, :]), axis=1)
-        pred_output = pred_output.reshape([len(input), 2] + self.process_data.output_shape)
+        pred_output = np.reshape(pred_output, [len(pred_output)] + self.process_data.output_shape)
+        pred_output = np.expand_dims(pred_output, 1)
 
         return pred_output
 
@@ -124,11 +96,11 @@ class PredictionModelGP(PredictionModel):
 
     def load(self):
         with open(self._model_file, 'r') as f:
-            self.gp_model = pickle.load(f)['model']
+            self.w = pickle.load(f)['w']
 
     def save(self):
         with open(self._model_file, 'w') as f:
-            pickle.dump({'model': self.gp_model}, f)
+            pickle.dump({'w': self.w}, f)
 
     def close(self):
         pass

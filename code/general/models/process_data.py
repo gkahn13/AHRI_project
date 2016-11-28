@@ -71,6 +71,26 @@ class Pedestrian(object):
 
         return pedestrians
 
+    @staticmethod
+    def nearest_pedestrians(ped, pedestrians):
+        nearest_positions = []
+        for frame, pos in zip(ped.frames, ped.positions):
+            nearest_pos, nearest_dist = None, np.inf
+            for other_ped in pedestrians:
+                if frame in other_ped.frames and ped != other_ped:
+                    other_pos = other_ped.positions[list(other_ped.frames).index(frame)]
+                    dist = np.linalg.norm(other_pos - pos)
+                    if dist < nearest_dist:
+                        nearest_dist = dist
+                        nearest_pos = other_pos
+
+            if nearest_pos is None:
+                nearest_pos = [0, 0] # TODO: hack
+            nearest_positions.append(nearest_pos)
+
+        nearest_positions = np.array(nearest_positions) - ped.positions # make relative to current pedestrian
+        return nearest_positions
+
 class ProcessData(object):
     """
     Process data for ETHZ BIWI Walking Pedestrians Dataset
@@ -221,6 +241,9 @@ class ProcessData(object):
         elif self.params['feature_type'] == 'position_velocity':
             add_inputs_outputs = self.add_inputs_outputs_position_velocity
             input_output_shape = self.input_output_shape_position_velocity
+        elif self.params['feature_type'] == 'position_velocity_nearest':
+            add_inputs_outputs = self.add_inputs_outputs_position_velocity_nearest
+            input_output_shape = self.input_output_shape_position_velocity_nearest
         else:
             raise Exception('Feature type {0} not valid'.format(self.params['feature_type']))
 
@@ -260,6 +283,30 @@ class ProcessData(object):
             for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
                 input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
                                    ped.velocities[start - self.params['K'] + 1:start + 1]))
+                output = ped.positions[start + 1:start + self.params['H'] + 1]
+
+                ped.add_input_output(input, output)
+
+    @property
+    def input_output_shape_position_velocity_nearest(self):
+        return {
+            'input': [self.params['K'], 6],
+            'output': [self.params['H'], 2]
+        }
+
+    def add_inputs_outputs_position_velocity_nearest(self, pedestrians):
+        for ped in pedestrians:
+            nearest = Pedestrian.nearest_pedestrians(ped, pedestrians)
+            for start in xrange(self.params['K'], len(ped) - (self.params['K'] + self.params['H'])):
+                # input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
+                #                    ped.velocities[start - self.params['K'] + 1:start + 1],
+                #                    nearest[start - self.params['K'] + 1:start + 1],
+                #                    np.expand_dims(np.linalg.norm(nearest[start - self.params['K'] + 1:start + 1], axis=1), 1)))
+                input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
+                                   ped.velocities[start - self.params['K'] + 1:start + 1],
+                                   nearest[start - self.params['K'] + 1:start + 1]))
+                # input = np.hstack((ped.positions[start - self.params['K'] + 1:start + 1],
+                #                    ped.velocities[start - self.params['K'] + 1:start + 1]))
                 output = ped.positions[start + 1:start + self.params['H'] + 1]
 
                 ped.add_input_output(input, output)

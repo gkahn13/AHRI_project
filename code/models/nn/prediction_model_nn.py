@@ -98,17 +98,18 @@ class PredictionModelNN(PredictionModel):
 
             ### define variables
             with tf.variable_scope('inference_vars', reuse=reuse):
+                n_hidden = 100
                 weights = [
-                    tf.get_variable('w_hidden_0', [np.prod(input_shape), 40],
+                    tf.get_variable('w_hidden_0', [np.prod(input_shape), n_hidden],
                                     initializer=tf.contrib.layers.xavier_initializer()),
-                    tf.get_variable('w_hidden_1', [40, 40],
+                    tf.get_variable('w_hidden_1', [n_hidden, n_hidden],
                                     initializer=tf.contrib.layers.xavier_initializer()),
-                    tf.get_variable('w_output', [40, np.prod(output_shape)],
+                    tf.get_variable('w_output', [n_hidden, np.prod(output_shape)],
                                     initializer=tf.contrib.layers.xavier_initializer()),
                 ]
                 biases = [
-                    tf.get_variable('b_hidden_0', [40], initializer=tf.constant_initializer(0.)),
-                    tf.get_variable('b_hidden_1', [40], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_hidden_0', [n_hidden], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_hidden_1', [n_hidden], initializer=tf.constant_initializer(0.)),
                     tf.get_variable('b_output', [np.prod(output_shape)], initializer=tf.constant_initializer(0.)),
                 ]
 
@@ -140,17 +141,18 @@ class PredictionModelNN(PredictionModel):
 
             ### define variables
             with tf.variable_scope('inference_vars', reuse=reuse):
+                n_hidden = 100
                 weights = [
-                    tf.get_variable('w_hidden_0', [np.prod(input_shape), 40],
+                    tf.get_variable('w_hidden_0', [np.prod(input_shape), n_hidden],
                                     initializer=tf.contrib.layers.xavier_initializer()),
-                    tf.get_variable('w_hidden_1', [40, 40],
+                    tf.get_variable('w_hidden_1', [n_hidden, n_hidden],
                                     initializer=tf.contrib.layers.xavier_initializer()),
-                    tf.get_variable('w_output', [40, np.prod(output_shape)],
+                    tf.get_variable('w_output', [n_hidden, np.prod(output_shape)],
                                     initializer=tf.contrib.layers.xavier_initializer()),
                 ]
                 biases = [
-                    tf.get_variable('b_hidden_0', [40], initializer=tf.constant_initializer(0.)),
-                    tf.get_variable('b_hidden_1', [40], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_hidden_0', [n_hidden], initializer=tf.constant_initializer(0.)),
+                    tf.get_variable('b_hidden_1', [n_hidden], initializer=tf.constant_initializer(0.)),
                     tf.get_variable('b_output', [np.prod(output_shape)], initializer=tf.constant_initializer(0.)),
                 ]
 

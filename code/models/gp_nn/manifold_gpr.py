@@ -59,12 +59,14 @@ class ManifoldGPR(GPflow.model.GPModel):
         return params
 
     def _graph_create_params_fc(self):
-        self.weights0 = GPflow.param.Param(init_xavier((self.X.shape[1], 5)))
-        self.weights1 = GPflow.param.Param(init_xavier((5, self.kern.input_dim)))
-        self.biases0 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones(5,)))
-        self.biases1 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones((self.kern.input_dim,))))
+        n_hidden = 40
+        self.weights0 = GPflow.param.Param(init_xavier((self.X.shape[1], n_hidden)))
+        self.weights1 = GPflow.param.Param(init_xavier((n_hidden, n_hidden)))
+        self.weights2 = GPflow.param.Param(init_xavier((n_hidden, self.kern.input_dim)))
+        self.biases0 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones(n_hidden,)))
+        self.biases1 = GPflow.param.Param(np.random.normal(scale=0.1 * np.ones(n_hidden,)))
+        self.biases2 = GPflow.param.Param(np.random.normal(scale=0.1*np.ones((self.kern.input_dim,))))
 
-    # @GPflow.param.AutoFlow(tf.float64)
     def _graph_inference_fc(self, x):
         weights = self._graph_get_params('weights')
         biases = self._graph_get_params('biases')
@@ -73,7 +75,7 @@ class ManifoldGPR(GPflow.model.GPModel):
         for i, (weight, bias) in enumerate(zip(weights, biases)):
             layer = tf.add(tf.matmul(layer, weight), bias)
             if i < len(weights) - 1:
-                layer = tf.nn.sigmoid(layer)
+                layer = tf.nn.relu(layer)
 
         return layer
 

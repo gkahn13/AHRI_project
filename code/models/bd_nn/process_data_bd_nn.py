@@ -69,3 +69,5 @@ class ProcessDataBDNN(ProcessDataNN):
                 i += self.params['features_per_file']
 
                 self.save_tfrecord(fname, features)
+
+        return train_pedestrians, val_pedestrians

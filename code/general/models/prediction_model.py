@@ -95,9 +95,9 @@ class PredictionModel(object):
         ### copy file model file over
         code_file_exists = os.path.exists(self._code_file)
         if code_file_exists:
-            self.logger.info('Creating OLD graph')
+            self.logger.info('Using OLD prediction model')
         else:
-            self.logger.info('Creating NEW graph')
+            self.logger.info('Copying CURRENT prediction model')
             shutil.copyfile(self._this_file, self._code_file)
 
     #############

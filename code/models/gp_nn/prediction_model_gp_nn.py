@@ -3,9 +3,16 @@ import os, pickle
 import GPflow
 
 from models.gp.prediction_model_gp import PredictionModelGP
+from models.gp_nn.process_data_gp_nn import ProcessDataGPNN
 from models.gp_nn.manifold_gpr import ManifoldGPR
 
+from general.models.prediction_model import PredictionModel
+
 class PredictionModelGPNN(PredictionModelGP):
+
+    def __init__(self, exp_folder, data_folder, params):
+        self.process_data = ProcessDataGPNN(data_folder, params)
+        PredictionModel.__init__(self, exp_folder, data_folder, params)
 
     #############
     ### Files ###
@@ -21,7 +28,12 @@ class PredictionModelGPNN(PredictionModelGP):
 
     def create_model(self, inputs, outputs):
         kernel = GPflow.kernels.Matern52(self.params['kernel_size'], lengthscales=0.3, ARD=False)
-        self.gp_model = ManifoldGPR(inputs, outputs, kern=kernel, graph_type=self.params['graph_type'])
+        # A = 0.01 * np.ones((self.params['kernel_size'], outputs.shape[1]))
+        # b = np.zeros(outputs.shape[1])
+        # mean_function = GPflow.mean_functions.Linear(A=A, b=b)
+
+        self.gp_model = ManifoldGPR(inputs, outputs, kern=kernel,
+                                    graph_type=self.params['graph_type'])
 
     #############################
     ### Load/save/reset/close ###

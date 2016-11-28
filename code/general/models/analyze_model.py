@@ -1,9 +1,14 @@
-import itertools
+import itertools, os
 
 import numpy as np
 import matplotlib
 matplotlib.rcParams.update({'font.size': 22})
+# from matplotlib import rc
+# rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+# rc('text', usetex=True)
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
 from matplotlib import cm
 import general.utils.colormaps as cmaps
 
@@ -30,7 +35,10 @@ class AnalyzeModel(object):
 
     @property
     def name(self):
-        return self.prediction_model.exp_folder.split('exps/')[1]
+        if 'name' in self.prediction_model.params:
+            return self.prediction_model.params['name']
+        else:
+            return self.prediction_model.exp_folder.split('exps/')[1]
 
     @staticmethod
     def get_inputs_outputs_preds(prediction_model, pedestrians):
@@ -181,7 +189,7 @@ class AnalyzeModels(object):
                 output = np.vstack((np.expand_dims(peds[0].inputs[n][-1,:2], 0), peds[0].outputs[n])) # TODO assumes first 2 inputs position
                 coords = perform_homography(homography, output)
                 plot_memoized('gt', ax, coords[:, 1], coords[:, 0],
-                              color='k', label='gt', marker='^', markersize=10, linewidth=3)
+                              color='k', label='Ground Truth', marker='^', markersize=10, linewidth=3)
 
                 for i, (input, pred_output) in enumerate(zip([p.inputs[n] for p in peds],
                                                              [p.pred_outputs[n] for p in peds])):
@@ -205,10 +213,12 @@ class AnalyzeModels(object):
                 if read == 'b':
                     break
 
-    def plot_accuracy_curve(self, title, displacement_metric, average_samples):
-        f, axes = plt.subplots(2, 1, sharex=True)
-        ax_mean = axes[0]
-        ax_std = axes[1]
+    def plot_accuracy_curve(self, title, displacement_metric, average_samples, save_folder=None):
+        markers = itertools.cycle(['^', 's', 'h', '*', 'd'])
+
+        plt.figure(figsize=(30, 15))
+        ax_mean = plt.subplot2grid((2, len(self.analyze_models)), (0, 0), colspan=len(self.analyze_models))
+        ax_stds = [plt.subplot2grid((2, len(self.analyze_models)), (1, i)) for i in xrange(len(self.analyze_models))]
 
         ### get prediction distance error
         dists_means = []
@@ -228,29 +238,55 @@ class AnalyzeModels(object):
             xs = dists_mean[sort_idxs]
             ys = np.linspace(0, 100, len(xs))
             xerrs = dists_std[sort_idxs]
-            color = cmaps.magma(i / float(len(labels)))
+            color = cmaps.plasma(i / float(len(labels)))
+            marker = next(markers)
 
-            ax_mean.plot(xs, ys, label=label, color=color, linewidth=5)
+            ax_mean.plot(xs, ys, label=label, color=color, linewidth=3,
+                         marker=marker, markevery=int(0.1*len(xs)), markersize=10., markeredgewidth=2.,
+                         markeredgecolor=color, markerfacecolor='w')
             # ax_mean.fill_betweenx(ys, xs - xerrs, xs + xerrs, color=color, alpha=0.5)
 
-            ax_std.plot(xs, xerrs, 'o', label=label, color=color, linewidth=5)
+            ax_stds[i].plot(xs, xerrs, 'o', color=color, markeredgecolor=color, markersize=2)
+
+            rho = np.corrcoef(xs, xerrs)[0, 1]
+            ax_stds[i].text(0.8, 0.9, r"$\rho = {0:.3f}$".format(rho), ha='center', va='center', transform=ax_stds[i].transAxes)
+
+        ### axes
+        max_xlim = max([ax.get_xlim()[1] for ax in ax_stds])
+        # max_ylim = max([ax.get_ylim()[1] for ax in ax_stds])
+        for ax in ax_stds:
+            ax.set_xlim((0, max_xlim))
+            # ax.set_ylim((0, max_ylim))
+            ax.set_ylim((0, ax.get_ylim()[1]))
 
         ### formatting
-        if average_samples:
-            title += ' (averaging samples)'
-        else:
-            title += ' (NOT averaging samples)'
-        f.suptitle(title)
+        # if average_samples:
+        #     title += ' (averaging samples)'
+        # else:
+        #     title += ' (NOT averaging samples)'
+        if title is None:
+            title = 'Average displacement'
+        plt.gcf().suptitle(title)
 
-        for ax in axes:
+        for ax in [ax_mean] + ax_stds:
             ax.set_xlabel('Threshold (meters)')
             ax.legend()
+        for ax in ax_stds:
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+            ax.yaxis.set_major_locator(MaxNLocator(prune='lower'))
 
-        ax_mean.set_ylabel('% of correctly predicted trajectories')
-        ax_std.set_ylabel('std of % of correctly predicted trajectories')
 
+        ax_mean.set_ylabel('percent of correctly predicted trajectories')
+        ax_stds[0].set_ylabel('std')
+
+        plt.tight_layout()
         plt.show(block=False)
         plt.pause(0.05)
+
+        if save_folder is not None:
+            plt.gcf().savefig(os.path.join(save_folder, title.lower().replace(' ', '_') + '_avg_disp.png'), dpi=200)
+
+        plt.close()
 
     def plot_cost_histogram(self, title, displacement_metric, average_samples, num_bins=21):
         f, axes = plt.subplots(2, 1, sharex=True)
@@ -312,18 +348,18 @@ class AnalyzeModels(object):
         plt.show(block=False)
         plt.pause(0.05)
 
-    def run(self):
+    def run(self, title=None, save_folder=None):
         # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, True)
         # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, True)
         # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
         # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
 
-        self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, True)
+        # self.plot_accuracy_curve(title, AnalyzeModels.average_displacement_metric, True, save_folder=save_folder)
         # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, False)
 
-        # self.plot_predictions_on_images()
+        self.plot_predictions_on_images()
 
-        raw_input('Press enter to exit')
+        # raw_input('Press enter to exit')
 
 
 
