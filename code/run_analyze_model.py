@@ -63,6 +63,7 @@ analyze5_dict = {
     'gp/exp0': {'name': 'gp'},
     'bd_nn/exp0': {'name': 'bd nn'},
     'gp_nn/exp0': {'name': 'gp nn'},
+    # 'bd_nn/exp4': {'name': 'd nn'}
 }
 
 analyze6_dict = {
@@ -73,6 +74,7 @@ analyze6_dict = {
     'gp/exp1': {'name': 'gp'},
     'bd_nn/exp1': {'name': 'bd nn'},
     'gp_nn/exp1': {'name': 'gp nn'},
+    # 'bd_nn/exp5': {'name': 'd nn'}
 }
 
 analyze7_dict = {
@@ -83,6 +85,7 @@ analyze7_dict = {
     'gp/exp2': {'name': 'gp'},
     'bd_nn/exp2': {'name': 'bd nn'},
     'gp_nn/exp2': {'name': 'gp nn'},
+    # 'bd_nn/exp6': {'name': 'd nn'}
 }
 
 analyze8_dict = {
@@ -93,17 +96,20 @@ analyze8_dict = {
     'gp/exp3': {'name': 'gp'},
     'bd_nn/exp3': {'name': 'bd nn'},
     'gp_nn/exp3': {'name': 'gp nn'},
+    # 'bd_nn/exp7': {'name': 'd nn'}
 }
 
 analyze9_dict = {
     'title': 'TEMP',
-    'exps': ['lr/exp2'],
-    'lr/exp2': {'name': 'Model'},
+    'exps': ['lr/exp0', 'bd_nn/exp0', 'bd_nn/exp4'],
+    'lr/exp0': {'name': 'lr/exp0'},
+    'bd_nn/exp0': {'name': 'bd_nn/exp0'},
+    'bd_nn/exp4': {'name': 'bd_nn/exp4'}
 }
 
-# analyze_dicts = [analyze0_dict, analyze1_dict, analyze2_dict, analyze3_dict, analyze4_dict]
-# analyze_dicts += [analyze5_dict, analyze6_dict, analyze7_dict, analyze8_dict]
-analyze_dicts = [analyze9_dict]
+analyze_dicts = [analyze0_dict, analyze1_dict, analyze2_dict, analyze3_dict, analyze4_dict]
+# analyze_dicts = [analyze5_dict, analyze6_dict, analyze7_dict, analyze8_dict]
+# analyze_dicts = [analyze9_dict]
 
 for analyze_dict in analyze_dicts:
     prediction_models = []

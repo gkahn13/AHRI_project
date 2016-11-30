@@ -2,12 +2,13 @@ import itertools, os
 
 import numpy as np
 import matplotlib
-matplotlib.rcParams.update({'font.size': 22})
+matplotlib.rcParams.update({'font.size': 32})
 # from matplotlib import rc
 # rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
 # rc('text', usetex=True)
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+from matplotlib import gridspec
 
 from matplotlib import cm
 import general.utils.colormaps as cmaps
@@ -216,9 +217,12 @@ class AnalyzeModels(object):
     def plot_accuracy_curve(self, title, displacement_metric, average_samples, save_folder=None):
         markers = itertools.cycle(['^', 's', 'h', '*', 'd'])
 
-        plt.figure(figsize=(30, 15))
-        ax_mean = plt.subplot2grid((2, len(self.analyze_models)), (0, 0), colspan=len(self.analyze_models))
-        ax_stds = [plt.subplot2grid((2, len(self.analyze_models)), (1, i)) for i in xrange(len(self.analyze_models))]
+        fig = plt.figure(figsize=(30, 10))
+        gs = gridspec.GridSpec(2, len(self.analyze_models), height_ratios=[3, 1])
+        ax_mean = fig.add_subplot(gs[0, :])
+        ax_stds = [fig.add_subplot(gs[1, i]) for i in xrange(len(self.analyze_models))]
+        # ax_mean = plt.subplot2grid((2, len(self.analyze_models)), (0, 0), colspan=len(self.analyze_models))
+        # ax_stds = [plt.subplot2grid((2, len(self.analyze_models)), (1, i)) for i in xrange(len(self.analyze_models))]
 
         ### get prediction distance error
         dists_means = []
@@ -249,7 +253,7 @@ class AnalyzeModels(object):
             ax_stds[i].plot(xs, xerrs, 'o', color=color, markeredgecolor=color, markersize=2)
 
             rho = np.corrcoef(xs, xerrs)[0, 1]
-            ax_stds[i].text(0.8, 0.9, r"$\rho = {0:.3f}$".format(rho), ha='center', va='center', transform=ax_stds[i].transAxes)
+            ax_stds[i].text(0.7, 0.85, r"$\rho = {0:.3f}$".format(rho), ha='center', va='center', transform=ax_stds[i].transAxes)
 
         ### axes
         max_xlim = max([ax.get_xlim()[1] for ax in ax_stds])
@@ -266,17 +270,18 @@ class AnalyzeModels(object):
         #     title += ' (NOT averaging samples)'
         if title is None:
             title = 'Average displacement'
-        plt.gcf().suptitle(title)
+        fig.suptitle(title)
 
         for ax in [ax_mean] + ax_stds:
             ax.set_xlabel('Threshold (meters)')
             ax.legend()
         for ax in ax_stds:
-            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
-            ax.yaxis.set_major_locator(MaxNLocator(prune='lower'))
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=3))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=5, prune='lower'))
+        ax_mean.yaxis.set_major_locator(MaxNLocator(prune='lower'))
 
 
-        ax_mean.set_ylabel('percent of correctly predicted trajectories')
+        ax_mean.set_ylabel('% correctly\npredicted trajectories')
         ax_stds[0].set_ylabel('std')
 
         plt.tight_layout()
@@ -284,9 +289,9 @@ class AnalyzeModels(object):
         plt.pause(0.05)
 
         if save_folder is not None:
-            plt.gcf().savefig(os.path.join(save_folder, title.lower().replace(' ', '_') + '_avg_disp.png'), dpi=200)
+            fig.savefig(os.path.join(save_folder, title.lower().replace(' ', '_') + '_avg_disp.png'), dpi=200)
 
-        plt.close()
+        plt.close(fig)
 
     def plot_cost_histogram(self, title, displacement_metric, average_samples, num_bins=21):
         f, axes = plt.subplots(2, 1, sharex=True)
@@ -354,10 +359,10 @@ class AnalyzeModels(object):
         # self.plot_cost_histogram('Average displacement', AnalyzeModels.average_displacement_metric, False)
         # self.plot_cost_histogram('Final displacement', AnalyzeModels.final_displacement_metric, False)
 
-        # self.plot_accuracy_curve(title, AnalyzeModels.average_displacement_metric, True, save_folder=save_folder)
+        self.plot_accuracy_curve(title, AnalyzeModels.average_displacement_metric, True, save_folder=save_folder)
         # self.plot_accuracy_curve('Average displacement', AnalyzeModels.average_displacement_metric, False)
 
-        self.plot_predictions_on_images()
+        # self.plot_predictions_on_images()
 
         # raw_input('Press enter to exit')
 

@@ -146,7 +146,7 @@ if __name__ == '__main__':
     kern_mgpr = GPflow.kernels.Matern52(2, lengthscales=0.3, ARD=False)
     mgpr = ManifoldGPR(X, Y, kern_mgpr, mean_function_mgpr)
 
-    for model in (mgpr,):
+    for model in (gpr, mgpr):
         model.likelihood.variance = 0.1
 
         param_values_before = [(p.name, p.value) for p in model.sorted_params if hasattr(p, 'value')]
