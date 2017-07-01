@@ -1,0 +1,18 @@
+#########################
+### Common parameters ###
+#########################
+
+exp: exp3
+random_seed: 1
+
+K: 3 # number previous timesteps to take in (i.e. 1 means only current)
+H: 12 # number future timesteps to predict
+
+##############################
+### LR specific parameters ###
+##############################
+
+feature_type: 'position_velocity_nearest'
+
+val_pct: 0.2
+
